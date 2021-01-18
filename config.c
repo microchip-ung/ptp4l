@@ -232,6 +232,7 @@ struct config_item config_tab[] = {
 	GLOB_ITEM_STR("clockIdentity", "000000.0000.000000"),
 	GLOB_ITEM_ENU("clock_servo", CLOCK_SERVO_PI, clock_servo_enu),
 	GLOB_ITEM_ENU("clock_type", CLOCK_TYPE_ORDINARY, clock_type_enu),
+	GLOB_ITEM_INT("cross_domain", 0, 0, 1),
 	GLOB_ITEM_ENU("dataset_comparison", DS_CMP_IEEE1588, dataset_comp_enu),
 	PORT_ITEM_INT("delayAsymmetry", 0, INT_MIN, INT_MAX),
 	PORT_ITEM_ENU("delay_filter", FILTER_MOVING_MEDIAN, delay_filter_enu),

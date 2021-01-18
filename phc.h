@@ -20,6 +20,7 @@
 #define HAVE_PHC_H
 
 #include "missing.h"
+#include "tmv.h"
 
 /**
  * Opens a PTP hardware clock device.
@@ -86,5 +87,7 @@ int phc_has_pps(clockid_t clkid);
  * otherwise.
  */
 int phc_has_writephase(clockid_t clkid);
+
+tmv_t phc_clock_cross_domain(clockid_t clkid, int out_domain, tmv_t ingress);
 
 #endif

@@ -132,6 +132,8 @@ struct clock {
 	struct interface *udsif;
 	LIST_HEAD(clock_subscribers_head, clock_subscriber) subscribers;
 	struct monitor *slave_event_monitor;
+	int cross_domain;
+	int cross_domain_nr;
 };
 
 struct clock the_clock;
@@ -987,6 +989,7 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 
 	c->dds.priority1 = config_get_int(config, NULL, "priority1");
 	c->dds.priority2 = config_get_int(config, NULL, "priority2");
+	c->cross_domain = config_get_int(config, NULL, "cross_domain");
 
 	/* Check the time stamping mode on each interface. */
 	c->timestamping = timestamping;
@@ -1016,6 +1019,7 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 		if (1 != sscanf(phc_device, "/dev/ptp%d", &phc_index)) {
 			phc_index = -1;
 		}
+		c->cross_domain_nr = phc_index;
 	} else if (interface_tsinfo_valid(iface)) {
 		phc_index = interface_phc_index(iface);
 	} else {
@@ -1735,6 +1739,7 @@ enum servo_state clock_synchronize(struct clock *c, tmv_t ingress, tmv_t origin)
 	}
 
 	offset = tmv_to_nanoseconds(c->master_offset);
+	ingress = clock_cross_domain(c, ingress);
 	adj = servo_sample(c->servo, offset, tmv_to_nanoseconds(ingress),
 			   weight, &state);
 	c->servo_state = state;
@@ -1937,4 +1942,13 @@ struct servo *clock_servo(struct clock *c)
 enum servo_state clock_servo_state(struct clock *c)
 {
 	return c->servo_state;
+}
+
+tmv_t clock_cross_domain(struct clock *c , tmv_t ingress)
+{
+	if (c->cross_domain) {
+		ingress = phc_clock_cross_domain(c->clkid, c->cross_domain_nr,
+						 ingress);
+	}
+	return ingress;
 }

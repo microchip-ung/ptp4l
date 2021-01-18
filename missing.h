@@ -30,6 +30,15 @@
 #include <time.h>
 #include <unistd.h>
 
+#define PTP_CLOCK_DOMAIN      _IOWR(PTP_CLK_MAGIC, 19, struct ptp_clock_domain)
+
+struct ptp_clock_domain {
+	struct ptp_clock_time in_time;
+	int from_domain;
+	int to_domain;
+	struct ptp_clock_time res_time;
+};
+
 #ifndef ADJ_TAI
 #define ADJ_TAI 0x0080
 #endif

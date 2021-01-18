@@ -367,4 +367,7 @@ void clock_check_ts(struct clock *c, uint64_t ts);
  */
 double clock_rate_ratio(struct clock *c);
 
+
+tmv_t clock_cross_domain(struct clock *c, tmv_t origin);
+
 #endif

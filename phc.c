@@ -137,3 +137,21 @@ int phc_has_writephase(clockid_t clkid)
 	}
 	return caps.adjust_phase;
 }
+
+tmv_t phc_clock_cross_domain(clockid_t clkid, int to_dm, tmv_t ingress)
+{
+	struct timespec ts = tmv_to_timespec(ingress);
+	int fd = CLOCKID_TO_FD(clkid), err;
+	struct ptp_clock_domain domain;
+
+	memset(&domain, 0, sizeof(domain));
+	domain.from_domain = 0;
+	domain.to_domain = to_dm;
+	domain.in_time.sec= ts.tv_sec;
+	domain.in_time.nsec = ts.tv_nsec;
+
+	err = ioctl(fd, PTP_CLOCK_DOMAIN, &domain);
+	if (err)
+		perror("PTP_CLOCK_DOMAIN");
+	return pct_to_tmv(domain.res_time);
+}

@@ -1582,6 +1582,7 @@ int port_tx_sync(struct port *p, struct address *dst)
 	fup->header.control            = CTL_FOLLOW_UP;
 	fup->header.logMessageInterval = p->logSyncInterval;
 
+	msg->hwts.ts = clock_cross_domain(p->clock, msg->hwts.ts);
 	fup->follow_up.preciseOriginTimestamp = tmv_to_Timestamp(msg->hwts.ts);
 
 	if (dst) {
