@@ -76,7 +76,7 @@ static struct sock_filter raw_filter[N_RAW_FILTER] = {
 	{OP_LDB,  0, 0, ETH_HLEN    },
 	{OP_AND,  0, 0, PTP_GEN_BIT }, /*test general bit*/
 	{OP_JEQ,  0, 1, 0           }, /*0,1=accept event; 1,0=accept general*/
-	{OP_RETK, 0, 0, 1500        }, /*accept*/
+	{OP_RETK, 0, 0, 1518        }, /*accept*/
 	{OP_RETK, 0, 0, 0           }, /*reject*/
 };
 
