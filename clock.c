@@ -596,6 +596,7 @@ static enum servo_state clock_no_adjust(struct clock *c, tmv_t ingress,
 	struct freq_estimator *f = &c->fest;
 	double freq, fui, ratio;
 	enum servo_state state;
+	Integer32 tmp;
 
 	if (c->local_sync_uncertain == SYNC_UNCERTAIN_FALSE) {
 		state = SERVO_LOCKED;
@@ -628,8 +629,15 @@ static enum servo_state clock_no_adjust(struct clock *c, tmv_t ingress,
 		return state;
 	}
 
-	ratio = tmv_dbl(tmv_sub(origin, f->origin1)) /
-		tmv_dbl(tmv_sub(ingress, f->ingress1));
+	if (c->type == CLOCK_TYPE_RELAY) {
+		tmp = (Integer32)(c->nrr * POW2_41 - POW2_41);
+		tmp += c->status.cumulativeScaledRateOffset;
+		ratio = 1.0 + (tmp + 0.0) / POW2_41;
+	} else {
+		ratio = tmv_dbl(tmv_sub(origin, f->origin1)) /
+			tmv_dbl(tmv_sub(ingress, f->ingress1));
+	}
+
 	freq = (1.0 - ratio) * 1e9;
 
 	if (c->stats.max_count > 1) {
@@ -1260,6 +1268,15 @@ void clock_follow_up_info(struct clock *c, struct follow_up_info_tlv *f)
 	c->status.gmTimeBaseIndicator = f->gmTimeBaseIndicator;
 	memcpy(&c->status.lastGmPhaseChange, &f->lastGmPhaseChange,
 	       sizeof(c->status.lastGmPhaseChange));
+}
+
+void clock_follow_up_info_update(struct clock *c, struct ptp_message *m)
+{
+	struct follow_up_info_tlv *fui;
+
+	fui = (struct follow_up_info_tlv *)m->follow_up.suffix;
+	fui->cumulativeScaledRateOffset =
+		htonl((Integer32)(clock_rate_ratio(c) * POW2_41 - POW2_41));
 }
 
 int clock_free_running(struct clock *c)
@@ -1934,6 +1951,11 @@ double clock_rate_ratio(struct clock *c)
 	return servo_rate_ratio(c->servo);
 }
 
+tmv_t clock_get_path_delay(struct clock *c)
+{
+	return c->path_delay;
+}
+
 struct servo *clock_servo(struct clock *c)
 {
 	return c->servo;
@@ -1951,4 +1973,12 @@ tmv_t clock_cross_domain(struct clock *c , tmv_t ingress)
 						 ingress);
 	}
 	return ingress;
+}
+
+bool clock_best_local(struct clock *c)
+{
+	if (cid_eq(&c->best_id, &c->dds.clockIdentity))
+		return true;
+
+	return false;
 }

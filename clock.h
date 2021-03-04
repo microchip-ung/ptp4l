@@ -370,4 +370,25 @@ double clock_rate_ratio(struct clock *c);
 
 tmv_t clock_cross_domain(struct clock *c, tmv_t origin);
 
+/**
+ * Update cumulative scaled rate offset in follow up messages
+ * @param c  The clock instance.
+ * @param m  The ptp mesage that has follow up info TLV
+ */
+void clock_follow_up_info_update(struct clock *c, struct ptp_message *m);
+
+/**
+ * Obtail the path delay
+ * @param c  The clock instance.
+ * return    The path delay
+ */
+tmv_t clock_get_path_delay(struct clock *c);
+
+/**
+ * Determin if the local clock is the GM
+ * @param c  The clock instance.
+ * return    True is local clock is the GM.
+ */
+bool clock_best_local(struct clock *c);
+
 #endif
