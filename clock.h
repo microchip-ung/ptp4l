@@ -41,6 +41,7 @@ enum clock_type {
 	CLOCK_TYPE_P2P        = 0x2000,
 	CLOCK_TYPE_E2E        = 0x1000,
 	CLOCK_TYPE_MANAGEMENT = 0x0800,
+	CLOCK_TYPE_RELAY      = 0x0400,
 };
 
 /**
@@ -396,4 +397,24 @@ void clock_check_ts(struct clock *c, uint64_t ts);
  */
 double clock_rate_ratio(struct clock *c);
 
+/**
+ * Update cumulative scaled rate offset in follow up messages
+ * @param c  The clock instance.
+ * @param m  The ptp mesage that has follow up info TLV
+ */
+void clock_follow_up_info_update(struct clock *c, struct ptp_message *m);
+
+/**
+ * Obtail the path delay
+ * @param c  The clock instance.
+ * return    The path delay
+ */
+tmv_t clock_get_path_delay(struct clock *c);
+
+/**
+ * Determin if the local clock is the GM
+ * @param c  The clock instance.
+ * return    True is local clock is the GM.
+ */
+bool clock_best_local(struct clock *c);
 #endif
