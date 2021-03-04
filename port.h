@@ -343,4 +343,18 @@ enum bmca_select port_bmca(struct port *p);
  */
 void tc_cleanup(void);
 
+/**
+ * Sets port Sync timeout
+ *
+ * @param port        A port instance
+ */
+int port_set_sync_tx_tmo(struct port *p);
+
+/**
+ * Sets port Announce timeout
+ *
+ * @param port        A port instance
+ */
+int port_set_manno_tmo(struct port *p);
+
 #endif
