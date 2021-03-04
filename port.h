@@ -364,4 +364,19 @@ void tc_cleanup(void);
  */
 void port_update_unicast_state(struct port *p);
 
+/**
+ * Sets port Sync timeout
+ *
+ * @param port        A port instance
+ */
+int port_set_sync_tx_tmo(struct port *p);
+
+/**
+ * Sets port Announce timeout
+ *
+ * @param port        A port instance
+ */
+int port_set_manno_tmo(struct port *p);
+
+
 #endif

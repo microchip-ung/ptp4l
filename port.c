@@ -1274,7 +1274,7 @@ int port_set_delay_tmo(struct port *p)
 	}
 }
 
-static int port_set_manno_tmo(struct port *p)
+int port_set_manno_tmo(struct port *p)
 {
 	return set_tmo_log(p->fda.fd[FD_MANNO_TIMER], 1, p->logAnnounceInterval);
 }
@@ -1291,7 +1291,7 @@ int port_set_sync_rx_tmo(struct port *p)
 			   p->syncReceiptTimeout, p->logSyncInterval);
 }
 
-static int port_set_sync_tx_tmo(struct port *p)
+int port_set_sync_tx_tmo(struct port *p)
 {
 	return set_tmo_log(p->fda.fd[FD_SYNC_TX_TIMER], 1, p->logSyncInterval);
 }
@@ -2211,7 +2211,7 @@ void process_delay_resp(struct port *p, struct ptp_message *m)
 	port_set_delay_tmo(p);
 }
 
-void process_follow_up(struct port *p, struct ptp_message *m)
+int process_follow_up(struct port *p, struct ptp_message *m)
 {
 	enum syfu_event event;
 	switch (p->state) {
@@ -2223,20 +2223,20 @@ void process_follow_up(struct port *p, struct ptp_message *m)
 	case PS_MASTER:
 	case PS_GRAND_MASTER:
 	case PS_PASSIVE:
-		return;
+		return -1;
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
 		break;
 	}
 
 	if (check_source_identity(p, m)) {
-		return;
+		return -1;
 	}
 
 	if (p->follow_up_info) {
 		struct follow_up_info_tlv *fui = follow_up_info_extract(m);
 		if (!fui)
-			return;
+			return -1;
 		clock_follow_up_info(p->clock, fui);
 	}
 
@@ -2247,6 +2247,7 @@ void process_follow_up(struct port *p, struct ptp_message *m)
 		event = FUP_MISMATCH;
 	}
 	port_syfufsm(p, event, m);
+	return 0;
 }
 
 int process_pdelay_req(struct port *p, struct ptp_message *m)
@@ -2517,9 +2518,10 @@ void process_pdelay_resp_fup(struct port *p, struct ptp_message *m)
 	port_peer_delay(p);
 }
 
-void process_sync(struct port *p, struct ptp_message *m)
+int process_sync(struct port *p, struct ptp_message *m)
 {
 	enum syfu_event event;
+
 	switch (p->state) {
 	case PS_INITIALIZING:
 	case PS_FAULTY:
@@ -2529,14 +2531,14 @@ void process_sync(struct port *p, struct ptp_message *m)
 	case PS_MASTER:
 	case PS_GRAND_MASTER:
 	case PS_PASSIVE:
-		return;
+		return -1;
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
 		break;
 	}
 
 	if (check_source_identity(p, m)) {
-		return;
+		return - 1;
 	}
 
 	if (!msg_unicast(m) &&
@@ -2559,7 +2561,7 @@ void process_sync(struct port *p, struct ptp_message *m)
 				 m->header.correction, 0,
 				 m->header.logMessageInterval);
 		flush_last_sync(p);
-		return;
+		return 0;
 	}
 
 	if (p->syfu == SF_HAVE_FUP &&
@@ -2570,6 +2572,7 @@ void process_sync(struct port *p, struct ptp_message *m)
 		event = SYNC_MISMATCH;
 	}
 	port_syfufsm(p, event, m);
+	return 0;
 }
 
 /* public methods */

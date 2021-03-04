@@ -203,12 +203,12 @@ int port_tx_interval_request(struct port *p,
 int port_tx_sync(struct port *p, struct address *dst, uint16_t sequence_id);
 int process_announce(struct port *p, struct ptp_message *m);
 void process_delay_resp(struct port *p, struct ptp_message *m);
-void process_follow_up(struct port *p, struct ptp_message *m);
+int process_follow_up(struct port *p, struct ptp_message *m);
 int process_pdelay_req(struct port *p, struct ptp_message *m);
 int process_pdelay_resp(struct port *p, struct ptp_message *m);
 void process_pdelay_resp_fup(struct port *p, struct ptp_message *m);
 int process_signaling(struct port *p, struct ptp_message *m);
-void process_sync(struct port *p, struct ptp_message *m);
+int process_sync(struct port *p, struct ptp_message *m);
 int source_pid_eq(struct ptp_message *m1, struct ptp_message *m2);
 void ts_add(tmv_t *ts, Integer64 correction);
 

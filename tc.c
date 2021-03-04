@@ -23,99 +23,10 @@
 #include "tc.h"
 #include "tmv.h"
 
-enum tc_match {
-	TC_MISMATCH,
-	TC_SYNC_FUP,
-	TC_FUP_SYNC,
-	TC_DELAY_REQRESP,
-};
-
 static TAILQ_HEAD(tc_pool, tc_txd) tc_pool = TAILQ_HEAD_INITIALIZER(tc_pool);
 
 static int tc_match_delay(int ingress_port, struct ptp_message *resp,
 			  struct tc_txd *txd);
-static int tc_match_syfup(int ingress_port, struct ptp_message *msg,
-			  struct tc_txd *txd);
-static void tc_recycle(struct tc_txd *txd);
-
-static struct tc_txd *tc_allocate(void)
-{
-	struct tc_txd *txd = TAILQ_FIRST(&tc_pool);
-
-	if (txd) {
-		TAILQ_REMOVE(&tc_pool, txd, list);
-		memset(txd, 0, sizeof(*txd));
-		return txd;
-	}
-	txd = calloc(1, sizeof(*txd));
-	return txd;
-}
-
-static int tc_blocked(struct port *q, struct port *p, struct ptp_message *m)
-{
-	enum port_state s;
-
-	if (q == p) {
-		return 1;
-	}
-	if (portnum(p) == 0) {
-		return 1;
-	}
-	if (!q->tc_spanning_tree) {
-		return 0;
-	}
-	/* Forward frames in the wrong domain unconditionally. */
-	if (m->header.domainNumber != clock_domain_number(p->clock)) {
-		return 0;
-	}
-	/* Ingress state */
-	s = port_state(q);
-	switch (s) {
-	case PS_INITIALIZING:
-	case PS_FAULTY:
-	case PS_DISABLED:
-	case PS_LISTENING:
-	case PS_PRE_MASTER:
-	case PS_PASSIVE:
-		return 1;
-	case PS_MASTER:
-	case PS_GRAND_MASTER:
-		/* Delay_Req swims against the stream. */
-		if (msg_type(m) != DELAY_REQ) {
-			return 1;
-		}
-		break;
-	case PS_UNCALIBRATED:
-	case PS_SLAVE:
-		break;
-	}
-	/* Egress state */
-	s = port_state(p);
-	switch (s) {
-	case PS_INITIALIZING:
-	case PS_FAULTY:
-	case PS_DISABLED:
-	case PS_LISTENING:
-	case PS_PRE_MASTER:
-	case PS_PASSIVE:
-		return 1;
-	case PS_UNCALIBRATED:
-	case PS_SLAVE:
-		/* Delay_Req swims against the stream. */
-		if (msg_type(m) != DELAY_REQ) {
-			return 1;
-		}
-		break;
-	case PS_MASTER:
-	case PS_GRAND_MASTER:
-		/* No use forwarding Delay_Req out the wrong port. */
-		if (msg_type(m) == DELAY_REQ) {
-			return 1;
-		}
-		break;
-	}
-	return 0;
-}
 
 static void tc_complete_request(struct port *q, struct port *p,
 				struct ptp_message *req, tmv_t residence)
@@ -235,23 +146,6 @@ static void tc_complete_syfup(struct port *q, struct port *p,
 	tc_recycle(txd);
 }
 
-static void tc_complete(struct port *q, struct port *p,
-			struct ptp_message *msg, tmv_t residence)
-{
-	switch (msg_type(msg)) {
-	case SYNC:
-	case FOLLOW_UP:
-		tc_complete_syfup(q, p, msg, residence);
-		break;
-	case DELAY_REQ:
-		tc_complete_request(q, p, msg, residence);
-		break;
-	case DELAY_RESP:
-		tc_complete_response(q, p, msg, residence);
-		break;
-	}
-}
-
 static int tc_current(struct ptp_message *m, struct timespec now)
 {
 	int64_t t1, t2;
@@ -330,8 +224,105 @@ static int tc_match_delay(int ingress_port, struct ptp_message *resp,
 	return TC_MISMATCH;
 }
 
-static int tc_match_syfup(int ingress_port, struct ptp_message *msg,
-			  struct tc_txd *txd)
+/* public methods */
+struct tc_txd *tc_allocate(void)
+{
+	struct tc_txd *txd = TAILQ_FIRST(&tc_pool);
+
+	if (txd) {
+		TAILQ_REMOVE(&tc_pool, txd, list);
+		memset(txd, 0, sizeof(*txd));
+		return txd;
+	}
+	txd = calloc(1, sizeof(*txd));
+	return txd;
+}
+
+int tc_blocked(struct port *q, struct port *p, struct ptp_message *m)
+{
+	enum port_state s;
+
+	if (q == p) {
+		return 1;
+	}
+	if (portnum(p) == 0) {
+		return 1;
+	}
+	if (!q->tc_spanning_tree) {
+		return 0;
+	}
+	/* Forward frames in the wrong domain unconditionally. */
+	if (m->header.domainNumber != clock_domain_number(p->clock)) {
+		return 0;
+	}
+	/* Ingress state */
+	s = port_state(q);
+	switch (s) {
+	case PS_INITIALIZING:
+	case PS_FAULTY:
+	case PS_DISABLED:
+	case PS_LISTENING:
+	case PS_PRE_MASTER:
+	case PS_PASSIVE:
+		return 1;
+	case PS_MASTER:
+	case PS_GRAND_MASTER:
+		/* Delay_Req swims against the stream. */
+		if (msg_type(m) != DELAY_REQ) {
+			return 1;
+		}
+		break;
+	case PS_UNCALIBRATED:
+	case PS_SLAVE:
+		break;
+	}
+	/* Egress state */
+	s = port_state(p);
+	switch (s) {
+	case PS_INITIALIZING:
+	case PS_FAULTY:
+	case PS_DISABLED:
+	case PS_LISTENING:
+	case PS_PRE_MASTER:
+	case PS_PASSIVE:
+		return 1;
+	case PS_UNCALIBRATED:
+	case PS_SLAVE:
+		/* Delay_Req swims against the stream. */
+		if (msg_type(m) != DELAY_REQ) {
+			return 1;
+		}
+		break;
+	case PS_MASTER:
+	case PS_GRAND_MASTER:
+		/* No use forwarding Delay_Req out the wrong port. */
+		if (msg_type(m) == DELAY_REQ) {
+			return 1;
+		}
+		break;
+	}
+	return 0;
+}
+
+void tc_complete(struct port *q, struct port *p, struct ptp_message *msg,
+		 tmv_t residence)
+{
+	switch (msg_type(msg)) {
+	case SYNC:
+	case FOLLOW_UP:
+		tc_complete_syfup(q, p, msg, residence);
+		break;
+	case DELAY_REQ:
+		tc_complete_request(q, p, msg, residence);
+		break;
+	case DELAY_RESP:
+		tc_complete_response(q, p, msg, residence);
+		break;
+	}
+}
+
+int tc_match_syfup(int ingress_port, struct ptp_message *msg,
+		   struct tc_txd *txd)
 {
 	if (ingress_port != txd->ingress_port) {
 		return TC_MISMATCH;
@@ -351,12 +342,10 @@ static int tc_match_syfup(int ingress_port, struct ptp_message *msg,
 	return TC_MISMATCH;
 }
 
-static void tc_recycle(struct tc_txd *txd)
+void tc_recycle(struct tc_txd *txd)
 {
 	TAILQ_INSERT_HEAD(&tc_pool, txd, list);
 }
-
-/* public methods */
 
 void tc_cleanup(void)
 {

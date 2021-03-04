@@ -23,6 +23,13 @@
 #include "msg.h"
 #include "port_private.h"
 
+enum tc_match {
+	TC_MISMATCH,
+	TC_SYNC_FUP,
+	TC_FUP_SYNC,
+	TC_DELAY_REQRESP,
+};
+
 /**
  * Flushes the list of remembered residence times.
  * @param q    Port whose list should be flushed
@@ -99,5 +106,37 @@ int tc_ignore(struct port *q, struct ptp_message *m);
  * @param q    Port whose list should be pruned.
  */
 void tc_prune(struct port *q);
+
+/**
+ *
+ */
+int tc_blocked(struct port *, struct port *q, struct ptp_message *msg);
+
+/**
+ *
+ */
+void tc_complete(struct port *q, struct port *p, struct ptp_message *msg,
+		 tmv_t residence);
+
+/**
+ *
+ */
+struct tc_txd *tc_allocate(void);
+
+/**
+ *
+ */
+int tc_blocked(struct port *q, struct port *p, struct ptp_message *m);
+
+/**
+ *
+ */
+void tc_recycle(struct tc_txd *txd);
+
+/*
+ *
+ */
+int tc_match_syfup(int ingress_port, struct ptp_message *msg,
+		   struct tc_txd *txd);
 
 #endif
