@@ -236,6 +236,16 @@ int main(int argc, char *argv[])
 			goto out;
 		}
 		break;
+	case CLOCK_TYPE_RELAY:
+		if (cfg->n_interfaces < 2) {
+			fprintf(stderr, "RELAY needs at least two interfaces\n");
+			goto out;
+		}
+		if (DM_P2P != config_get_int(cfg, NULL, "delay_mechanism")) {
+			fprintf(stderr, "RELAY needs P2P delay mechanism\n");
+			goto out;
+		}
+		break;
 	case CLOCK_TYPE_MANAGEMENT:
 		goto out;
 	}

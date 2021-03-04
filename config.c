@@ -148,6 +148,7 @@ static struct config_enum clock_type_enu[] = {
 	{ "BC",      CLOCK_TYPE_BOUNDARY },
 	{ "P2P_TC",  CLOCK_TYPE_P2P      },
 	{ "E2E_TC",  CLOCK_TYPE_E2E      },
+	{ "RELAY",   CLOCK_TYPE_RELAY    },
 	{ NULL, 0 },
 };
 

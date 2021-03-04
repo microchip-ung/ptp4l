@@ -3031,6 +3031,10 @@ struct port *port_open(const char *phc_device,
 		p->dispatch = e2e_dispatch;
 		p->event = e2e_event;
 		break;
+	case CLOCK_TYPE_RELAY:
+		p->dispatch = relay_dispatch;
+		p->event = relay_event;
+		break;
 	case CLOCK_TYPE_MANAGEMENT:
 		goto err_port;
 	}
@@ -3125,6 +3129,9 @@ struct port *port_open(const char *phc_device,
 	if (number && type == CLOCK_TYPE_E2E && p->delayMechanism != DM_E2E) {
 		pr_err("port %d: E2E TC needs E2E ports", number);
 		goto err_uc_service;
+	}
+	if (number && type == CLOCK_TYPE_RELAY && p->delayMechanism != DM_P2P) {
+		pr_err("port %d: RELAY needs P2P ports", number);
 	}
 	if (p->hybrid_e2e && p->delayMechanism != DM_E2E) {
 		pr_warning("port %d: hybrid_e2e only works with E2E", number);
