@@ -8,6 +8,15 @@
   (API) offered by the Linux kernel. Supporting legacy APIs and other
   platforms is not a goal.
 
+* Microchip changes
+
+  We have tried to extend the existing set of features to support also
+  IEEE 802.1AS-2020 in the role of relay. We will try to send for
+  upstreaming these patches and if they will be accepted then we will stop
+  using this repo and start to use original one.
+
+  Currently is still missing the redundant support.
+
 * License
 
   The software is copyrighted by the authors and is licensed under the
