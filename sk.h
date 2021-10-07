@@ -159,6 +159,14 @@ int sk_timestamping_init(int fd, const char *device, enum timestamp_type type,
 			 enum transport_type transport, int vclock);
 
 /**
+ * Disable time stamping on a given network interface.
+ * @param fd          An open socket.
+ * @param device      The name of the network interface to configure.
+ * @return            Zero on success, non-zero otherwise.
+ */
+int sk_timestamping_destroy(int fd, const char *device);
+
+/**
  * Limits the time that RECVMSG(2) will poll while waiting for the tx timestamp
  * if MSG_ERRQUEUE is set. Specified in milliseconds.
  */

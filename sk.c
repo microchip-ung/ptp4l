@@ -647,3 +647,8 @@ int sk_timestamping_init(int fd, const char *device, enum timestamp_type type,
 
 	return 0;
 }
+
+int sk_timestamping_destroy(int fd, const char *device)
+{
+	return hwts_init(fd, device, 0, 0, HWTSTAMP_TX_OFF);
+}

@@ -46,6 +46,7 @@ struct udp {
 	struct transport t;
 	struct address ip;
 	struct address mac;
+	char *name;
 };
 
 static int mcast_bind(int fd, int index)
@@ -85,6 +86,10 @@ static int mcast_join(int fd, int index, const struct sockaddr_in *sa)
 
 static int udp_close(struct transport *t, struct fdarray *fda)
 {
+	struct udp *udp = container_of(t, struct udp, t);
+
+	sk_timestamping_destroy(fda->fd[0], udp->name);
+
 	close(fda->fd[0]);
 	close(fda->fd[1]);
 	return 0;
@@ -164,6 +169,7 @@ static int udp_open(struct transport *t, struct interface *iface,
 
 	udp->ip.len = 0;
 	sk_interface_addr(name, AF_INET, &udp->ip);
+	udp->name = strdup(name);
 
 	if (!inet_aton(PTP_PRIMARY_MCAST_IPADDR, &mcast_addr[MC_PRIMARY]))
 		return -1;
@@ -268,6 +274,7 @@ static int udp_send(struct transport *t, struct fdarray *fda,
 static void udp_release(struct transport *t)
 {
 	struct udp *udp = container_of(t, struct udp, t);
+	free(udp->name);
 	free(udp);
 }
 
