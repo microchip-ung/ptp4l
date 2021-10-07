@@ -52,6 +52,7 @@ struct udp6 {
 	struct address ip;
 	struct address mac;
 	struct in6_addr mc6_addr[2];
+	char *name;
 };
 
 static int is_link_local(struct in6_addr *addr)
@@ -96,6 +97,10 @@ static int mc_join(int fd, int index, const struct sockaddr_in6 *sa)
 
 static int udp6_close(struct transport *t, struct fdarray *fda)
 {
+	struct udp6 *udp6 = container_of(t, struct udp6, t);
+
+	sk_timestamping_destroy(fda->fd[0], udp6->name);
+
 	close(fda->fd[0]);
 	close(fda->fd[1]);
 	return 0;
@@ -174,6 +179,7 @@ static int udp6_open(struct transport *t, struct interface *iface,
 
 	udp6->ip.len = 0;
 	sk_interface_addr(name, AF_INET6, &udp6->ip);
+	udp6->name = strdup(name);
 
 	if (1 != inet_pton(AF_INET6, PTP_PRIMARY_MCAST_IP6ADDR,
 			   &udp6->mc6_addr[MC_PRIMARY]))
@@ -282,6 +288,7 @@ static int udp6_send(struct transport *t, struct fdarray *fda,
 static void udp6_release(struct transport *t)
 {
 	struct udp6 *udp6 = container_of(t, struct udp6, t);
+	free(udp6->name);
 	free(udp6);
 }
 
