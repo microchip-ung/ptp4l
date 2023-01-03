@@ -244,6 +244,7 @@ void relay_dispatch(struct port *p, enum fsm_event event, int mdiff)
 		}
 
 		switch (p->state) {
+		case PS_PRE_MASTER:
 		case PS_MASTER:
 		case PS_GRAND_MASTER:
 			port_clr_tmo(p->fda.fd[FD_ANNOUNCE_TIMER]);
