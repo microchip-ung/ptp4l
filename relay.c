@@ -245,6 +245,12 @@ void relay_dispatch(struct port *p, enum fsm_event event, int mdiff)
 
 		switch (p->state) {
 		case PS_PRE_MASTER:
+			port_clr_tmo(p->fda.fd[FD_ANNOUNCE_TIMER]);
+			port_clr_tmo(p->fda.fd[FD_SYNC_RX_TIMER]);
+			/* Leave FD_DELAY_TIMER running. */
+			port_clr_tmo(p->fda.fd[FD_MANNO_TIMER]);
+			port_clr_tmo(p->fda.fd[FD_SYNC_TX_TIMER]);
+			break;
 		case PS_MASTER:
 		case PS_GRAND_MASTER:
 			port_clr_tmo(p->fda.fd[FD_ANNOUNCE_TIMER]);
@@ -383,7 +389,7 @@ enum fsm_event relay_event(struct port *p, int fd_index)
 			port_set_manno_tmo(p);
 			return port_tx_announce(p, NULL) ? EV_FAULT_DETECTED : EV_NONE;
 		}
-		break;
+		return EV_NONE;
 	case FD_SYNC_TX_TIMER:
 		if (clock_best_local(p->clock)) {
 			pr_debug("port %hu: master sync timeout", portnum(p));
