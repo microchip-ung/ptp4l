@@ -2263,8 +2263,7 @@ int process_pdelay_resp(struct port *p, struct ptp_message *m)
 		}
 	}
 	if (!p->peer_delay_req) {
-		pr_err("port %hu: rogue peer delay response", portnum(p));
-		return -1;
+		return 0;
 	}
 	if (p->peer_portid_valid) {
 		if (!pid_eq(&p->peer_portid, &m->header.sourcePortIdentity)) {
