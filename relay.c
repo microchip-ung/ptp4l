@@ -100,7 +100,6 @@ static void relay_complete_syfup(struct port *q, struct port *p,
 
 	c1 = net2host64(fup->header.correction);
 	c2 = c1 + tmv_to_TimeInterval(residence);
-	c2 += tmv_to_TimeInterval(q->peer_delay);
 	c2 += q->asymmetry;
 	fup->header.correction = host2net64(c2);
 
