@@ -83,6 +83,7 @@ struct clock {
 	enum clock_type type;
 	struct config *config;
 	clockid_t clkid;
+	clockid_t dpllid;
 	struct servo *servo;
 	enum servo_type servo_type;
 	int (*dscmp)(struct dataset *a, struct dataset *b);
@@ -940,6 +941,17 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 	c->desc.revisionData.max_symbols = 32;
 	c->desc.userDescription.max_symbols = 128;
 
+	tmp = config_get_string(config, NULL, "dpllClock");
+	if (count_char(tmp, ';') != 2) {
+		c->dpllid = phc_open(tmp);
+		if (c->dpllid == CLOCK_INVALID) {
+			pr_err("Failed to open %s: %m", tmp);
+			return NULL;
+		}
+	} else {
+		c->dpllid = CLOCK_INVALID;
+	}
+
 	tmp = config_get_string(config, NULL, "productDescription");
 	if (count_char(tmp, ';') != 2 ||
 	    static_ptp_text_set(&c->desc.productDescription, tmp)) {
@@ -1127,7 +1139,10 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 		/* Due to a bug in older kernels, the reading may silently fail
 		   and return 0. Set the frequency back to make sure fadj is
 		   the actual frequency of the clock. */
-		clockadj_set_freq(c->clkid, fadj);
+		if (c->dpllid != CLOCK_INVALID)
+			clockadj_set_freq(c->dpllid, fadj);
+		else
+			clockadj_set_freq(c->clkid, fadj);
 
 		/* Disable write phase mode if not implemented by driver */
 		if (c->write_phase_mode && !phc_has_writephase(c->clkid)) {
@@ -1719,7 +1734,11 @@ int clock_switch_phc(struct clock *c, int phc_index)
 
 static void clock_synchronize_locked(struct clock *c, double adj)
 {
-	clockadj_set_freq(c->clkid, -adj);
+	if (c->dpllid != CLOCK_INVALID)
+		clockadj_set_freq(c->dpllid, -adj);
+	else
+		clockadj_set_freq(c->clkid, -adj);
+
 	if (c->clkid == CLOCK_REALTIME) {
 		sysclk_set_sync();
 	}
@@ -1768,7 +1787,11 @@ enum servo_state clock_synchronize(struct clock *c, tmv_t ingress, tmv_t origin)
 	case SERVO_UNLOCKED:
 		break;
 	case SERVO_JUMP:
-		clockadj_set_freq(c->clkid, -adj);
+		if (c->dpllid != CLOCK_INVALID)
+			clockadj_set_freq(c->dpllid, -adj);
+		else
+			clockadj_set_freq(c->clkid, -adj);
+
 		clockadj_step(c->clkid, -tmv_to_nanoseconds(c->master_offset));
 		c->ingress_ts = tmv_zero();
 		if (c->sanity_check) {

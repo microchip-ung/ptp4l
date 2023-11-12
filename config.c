@@ -333,6 +333,7 @@ struct config_item config_tab[] = {
 	GLOB_ITEM_INT("utc_offset", CURRENT_UTC_OFFSET, 0, INT_MAX),
 	GLOB_ITEM_INT("verbose", 0, 0, 1),
 	GLOB_ITEM_INT("write_phase_mode", 0, 0, 1),
+	GLOB_ITEM_STR("dpllClock", ";;"),
 };
 
 static struct unicast_master_table *current_uc_mtab;
