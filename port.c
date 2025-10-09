@@ -1360,6 +1360,14 @@ static void port_synchronize(struct port *p,
 	c2 = correction_to_tmv(correction2);
 	t1c = tmv_add(t1, tmv_add(c1, c2));
 
+	pr_info("X,%05d,%010lld,%09lld,%010lld,%09lld,%c%010lld,%03lld",
+		seqid,
+		t1.ns / 1000000000ULL, t1.ns % 1000000000ULL,
+		t2.ns / 1000000000ULL, t2.ns % 1000000000ULL,
+		(correction1 + correction2) > 0 ? '+' : '-',
+		(correction1 + correction2) >> 16,
+		(((correction1 + correction2) & 0xffff) * 1000ULL) / 65536ULL);
+
 	switch (p->state) {
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
@@ -2183,6 +2191,14 @@ void process_delay_resp(struct port *p, struct ptp_message *m)
 	t3 = req->hwts.ts;
 	t4 = timestamp_to_tmv(m->ts.pdu);
 	t4c = tmv_sub(t4, c3);
+
+	pr_info("Y,%05d,%010lld,%09lld,%010lld,%09lld,%c%010lld,%03lld",
+		m->header.sequenceId,
+		t4.ns / 1000000000ULL, t4.ns % 1000000000ULL,
+		t3.ns / 1000000000ULL, t3.ns % 1000000000ULL,
+		m->header.correction > 0 ? '+' : '-',
+		m->header.correction >> 16,
+		((m->header.correction & 0xffff) * 1000ULL) / 65536ULL);
 
 	monitor_delay(p->slave_event_monitor, clock_parent_identity(p->clock),
 		      m->header.sequenceId, t3, c3, t4);
