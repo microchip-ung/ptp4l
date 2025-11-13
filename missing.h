@@ -473,6 +473,28 @@ static inline int timerfd_settime(int fd, int flags,
 
 #include <sys/timerfd.h>
 
+#define BIT(nr)			(1 << (nr))
+
+#ifndef SO_REDUNDANCY
+#define SO_REDUNDANCY		85
+#define SCM_REDUNDANCY		SO_REDUNDANCY
+#endif
+
+#define PTP_MSG_IN		BIT(7)
+#define PTP_EVT_OUT		BIT(6)
+#define DIRECTED_TX		BIT(5)
+#define RED_PORT_B		BIT(1)
+#define RED_PORT_A		BIT(0)
+
+#define MSG_REDINFO(m)		(&(m)->redinfo)
+
+#define REDINFO_T(r)		((r)->io_port & (0x3 << 6))
+#define REDINFO_PORTS(r)	((r)->io_port & 0x3)
+#define REDINFO_PATHID(r)	((r)->pathid)
+#define REDINFO_SEQNR(r)	((r)->seqnr)
+
+#define MSG_RED_PORTS(m)	(REDINFO_PORTS(MSG_REDINFO(m)))
+
 #endif
 
 #endif
