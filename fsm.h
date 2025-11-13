@@ -31,6 +31,7 @@ enum port_state {
 	PS_PASSIVE,
 	PS_UNCALIBRATED,
 	PS_SLAVE,
+	PS_PASSIVE_SLAVE,
 	PS_GRAND_MASTER, /*non-standard extension*/
 };
 
@@ -53,6 +54,7 @@ enum fsm_event {
 	EV_RS_GRAND_MASTER,
 	EV_RS_SLAVE,
 	EV_RS_PASSIVE,
+	EV_RS_PASSIVE_SLAVE,
 };
 
 enum bmca_select {

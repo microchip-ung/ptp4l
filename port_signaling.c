@@ -147,6 +147,7 @@ int process_signaling(struct port *p, struct ptp_message *m)
 	case PS_PASSIVE:
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
+	case PS_PASSIVE_SLAVE:
 		break;
 	}
 

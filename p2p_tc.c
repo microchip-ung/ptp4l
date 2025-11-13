@@ -37,6 +37,7 @@ static int p2p_delay_request(struct port *p)
 	case PS_PASSIVE:
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
+	case PS_PASSIVE_SLAVE:
 	case PS_GRAND_MASTER:
 		break;
 	}
@@ -86,6 +87,8 @@ void p2p_dispatch(struct port *p, enum fsm_event event, int mdiff)
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
 		port_set_announce_tmo(p);
+		break;
+	case PS_PASSIVE_SLAVE:
 		break;
 	};
 }

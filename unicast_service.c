@@ -530,6 +530,7 @@ int unicast_service_timer(struct port *p)
 	case PS_LISTENING:
 	case PS_PRE_MASTER:
 	case PS_PASSIVE:
+	case PS_PASSIVE_SLAVE:
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
 		break;
