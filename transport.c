@@ -25,6 +25,7 @@
 #include "udp.h"
 #include "udp6.h"
 #include "uds.h"
+#include "missing.h"
 
 int transport_close(struct transport *t, struct fdarray *fda)
 {
@@ -75,6 +76,30 @@ int transport_txts(struct fdarray *fda,
 
 	cnt = sk_receive(fda->fd[FD_EVENT], pkt, len, NULL, hwts, MSG_ERRQUEUE);
 	return cnt > 0 ? 0 : cnt;
+}
+
+int transport_red_recv(struct transport *t, int fd, struct ptp_message *msg)
+{
+	return t->red_recv(t, fd, msg, sizeof(msg->data), &msg->address,
+			   &msg->hwts, &msg->redinfo);
+}
+
+int transport_red_sendmsg(struct transport *t, struct fdarray *fda, int event,
+			  struct ptp_message *msg)
+{
+	int len = ntohs(msg->header.messageLength);
+
+	return t->red_sendmsg(t, fda, event, 0, msg, len, NULL, &msg->hwts,
+			      &msg->redinfo);
+}
+
+int transport_red_peermsg(struct transport *t, struct fdarray *fda, int event,
+			  struct ptp_message *msg)
+{
+	int len = ntohs(msg->header.messageLength);
+
+	return t->red_sendmsg(t, fda, event, 1, msg, len, NULL, &msg->hwts,
+			      &msg->redinfo);
 }
 
 int transport_physical_addr(struct transport *t, uint8_t *addr)
