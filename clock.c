@@ -95,7 +95,7 @@ struct clock {
 	clockid_t clkid;
 	struct servo *servo;
 	enum servo_type servo_type;
-	int (*dscmp)(struct dataset *a, struct dataset *b);
+	int (*dscmp)(struct dataset *a, struct dataset *b, int a_qual, int b_qual);
 	struct defaultDS dds;
 	struct dataset default_dataset;
 	struct currentDS cur;
@@ -110,6 +110,7 @@ struct clock {
 	struct pollfd *pollfd;
 	int pollfd_valid;
 	int nports; /* does not include the two UDS ports */
+	int n_red_master_ports;
 	int last_port_number;
 	int sde;
 	int free_running;
@@ -1002,7 +1003,7 @@ struct config *clock_config(struct clock *c)
 	return c->config;
 }
 
-int (*clock_dscmp(struct clock *c))(struct dataset *a, struct dataset *b)
+int (*clock_dscmp(struct clock *c))(struct dataset *a, struct dataset *b, int a_qual, int b_qual)
 {
 	return c->dscmp;
 }
@@ -1016,9 +1017,21 @@ static int clock_add_port(struct clock *c, const char *phc_device,
 			  int phc_index, enum timestamp_type timestamping,
 			  struct interface *iface)
 {
+	int total_ports = c->nports + c->n_red_master_ports;
 	struct port *p, *piter, *lastp = NULL;
+	int red, red_master = 0;
+	char *name;
 
-	if (clock_resize_pollfd(c, c->nports + 2)) {
+	red = config_get_int(c->config, interface_name(iface), "redundancy");
+	name = config_get_string(c->config, interface_name(iface),
+				 "redundancy_master_interface");
+	/* A redundancy interface that doesn't specify any
+	 * redundancy master interface, i.e., this is a redundancy
+	 * master interface itself.
+	 */
+	if (red && !name)
+		red_master = 1;
+	if (clock_resize_pollfd(c, total_ports + 1)) {
 		return -1;
 	}
 	p = port_open(phc_device, phc_index, timestamping,
@@ -1035,7 +1048,16 @@ static int clock_add_port(struct clock *c, const char *phc_device,
 	} else {
 		LIST_INSERT_HEAD(&c->ports, p, list);
 	}
-	c->nports++;
+
+	/* Redundancy master ports (e.g. hsr0) are not counted as PTP ports
+	 * since they only aggregate traffic for the slave ports and do not
+	 * participate in the PTP state machine themselves.
+	 */
+	if (red_master)
+		c->n_red_master_ports++;
+	else
+		c->nports++;
+
 	clock_fda_changed(c);
 
 	return 0;
@@ -1049,7 +1071,12 @@ static void clock_remove_port(struct clock *c, struct port *p)
 	 * the code, but even then we don't mind if pollfd is larger
 	 * than necessary. */
 	LIST_REMOVE(p, list);
-	c->nports--;
+
+	if (red_master_port(p))
+		c->n_red_master_ports--;
+	else
+		c->nports--;
+
 	clock_fda_changed(c);
 	port_close(p);
 }
@@ -1101,7 +1128,7 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 	clock_gettime(CLOCK_REALTIME, &ts);
 	srandom(ts.tv_sec ^ ts.tv_nsec);
 
-	if (c->nports) {
+	if (c->nports || c->n_red_master_ports) {
 		clock_destroy(c);
 	}
 
@@ -1441,6 +1468,13 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 
 	c->dds.numberPorts = c->nports;
 
+	/* Link up redundant paired ports as
+	 * well as redundant master and slave
+	 */
+	LIST_FOREACH(p, &c->ports, list) {
+		port_redundancy_setup(p);
+	}
+
 	LIST_FOREACH(p, &c->ports, list) {
 		port_dispatch(p, EV_INITIALIZE, 0);
 	}
@@ -1542,12 +1576,20 @@ static void clock_fill_pollfd(struct pollfd *dest, struct port *p)
 	int i;
 
 	fda = port_fda(p);
-	for (i = 0; i < N_POLLFD; i++) {
-		dest[i].fd = fda->fd[i];
-		dest[i].events = POLLIN|POLLPRI;
+	if (fda->events_valid) {
+		for (i = 0; i < N_POLLFD; i++) {
+			dest[i].fd = fda->fd[i];
+			dest[i].events = fda->events[i];
+		}
+	} else {
+		for (i = 0; i < N_POLLFD; i++) {
+			dest[i].fd = fda->fd[i];
+			dest[i].events = POLLIN|POLLPRI;
+		}
 	}
+
 	dest[i].fd = port_fault_fd(p);
-	dest[i].events = POLLIN|POLLPRI;
+	dest[i].events = port_fault_fd_events(p);
 }
 
 static void clock_check_pollfd(struct clock *c)
@@ -1805,10 +1847,11 @@ int clock_poll(struct clock *c)
 	enum port_state prior_state;
 	enum fsm_event event;
 	struct pollfd *cur;
-	struct port *p;
+	struct port *p, *piter = NULL;
+	int total_ports = c->nports + c->n_red_master_ports;
 
 	clock_check_pollfd(c);
-	cnt = poll(c->pollfd, (c->nports + 2) * N_CLOCK_PFD, -1);
+	cnt = poll(c->pollfd, (total_ports + 1) * N_CLOCK_PFD, -1);
 	if (cnt < 0) {
 		if (EINTR == errno) {
 			return 0;
@@ -1842,12 +1885,42 @@ int clock_poll(struct clock *c)
 				if (EV_ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES == event) {
 					c->sde = 1;
 				}
+				if (EV_SYNC_RECEIPT_TIMEOUT_EXPIRES == event) {
+					c->sde = 1;
+				}
+				if (i == FD_EVENT || i == FD_GENERAL) {
+					/* Red master port needs to dispatch
+					 * the event to a red slave port
+					 */
+					piter = p;
+					p = port_get_dispatch_port(piter);
+					if (!p) {
+						pr_err("%s: No red dispatch port",
+						       port_name(piter));
+						p = piter;
+						piter = NULL;
+						continue;
+					}
+				}
 				port_dispatch(p, event, 0);
 				/* Clear any fault after a little while. */
 				if ((PS_FAULTY == port_state(p)) && (prior_state != PS_FAULTY)) {
 					clock_fault_timeout(p, 1);
+					if (piter) {
+						port_release_dispatch_port(piter, p);
+						p = piter;
+						piter = NULL;
+					}
 					break;
 				}
+			}
+			/* Before we move onto the next fd, restore the
+			 * port being iterated.
+			 */
+			if (piter) {
+				port_release_dispatch_port(piter, p);
+				p = piter;
+				piter = NULL;
 			}
 		}
 
@@ -1863,6 +1936,15 @@ int clock_poll(struct clock *c)
 		}
 
 		cur += N_CLOCK_PFD;
+		/* Restore the port being used in the iteration loop */
+		if (piter) {
+			/* SHOULD NOT happen */
+			pr_warning("WARN: original iterator %s has not been restored",
+				   port_name(piter));
+			port_release_dispatch_port(piter, p);
+			p = piter;
+			piter = NULL;
+		}
 	}
 
 	/* Check the UDS ports. */
@@ -2212,22 +2294,37 @@ void clock_update_time_properties(struct clock *c, struct timePropertiesDS tds)
 static void handle_state_decision_event(struct clock *c)
 {
 	struct foreign_clock *best = NULL, *fc;
+	int res, fc_qual = 0, best_qual = 0;
 	struct ClockIdentity best_id;
 	struct port *piter;
 	int fresh_best = 0;
+	enum port_state ps;
 
 	LIST_FOREACH(piter, &c->ports, list) {
 		fc = port_compute_best(piter);
 		if (!fc)
 			continue;
-		if (!best || c->dscmp(&fc->dataset, &best->dataset) > 0)
+		if (!best) {
 			best = fc;
+		} else {
+			fc_qual = red_port_quality(piter);
+			best_qual = red_port_quality(best->port);
+
+			res = dscmp(&fc->dataset, &best->dataset,
+				    fc_qual, best_qual);
+
+			if (res > 0)
+				best = fc;
+		}
 	}
 
 	if (best) {
 		best_id = best->dataset.identity;
+		pr_notice("selected best master clock %s on port %hu",
+			  cid2str(&best_id), port_number(best->port));
 	} else {
 		best_id = c->dds.clockIdentity;
+		pr_notice("selected best master clock %s", cid2str(&best_id));
 	}
 
 	if (!cid_eq(&best_id, &c->best_id) || best != c->best) {
@@ -2257,7 +2354,6 @@ static void handle_state_decision_event(struct clock *c)
 	c->best_id = best_id;
 
 	LIST_FOREACH(piter, &c->ports, list) {
-		enum port_state ps;
 		enum fsm_event event;
 		ps = bmc_state_decision(c, piter, c->dscmp);
 		switch (ps) {
@@ -2265,8 +2361,8 @@ static void handle_state_decision_event(struct clock *c)
 			event = EV_NONE;
 			break;
 		case PS_GRAND_MASTER:
-			pr_notice("%s: assuming the grand master role",
-				  port_log_name(piter));
+			pr_notice("%s assuming the grand master role",
+				  port_name(piter));
 			clock_update_grandmaster(c);
 			event = EV_RS_GRAND_MASTER;
 			break;
@@ -2274,11 +2370,20 @@ static void handle_state_decision_event(struct clock *c)
 			event = EV_RS_MASTER;
 			break;
 		case PS_PASSIVE:
+			pr_notice("%s assuming the PASSIVE role",
+				  port_name(piter));
 			event = EV_RS_PASSIVE;
 			break;
 		case PS_SLAVE:
+			pr_notice("%s assuming the SLAVE role",
+				  port_name(piter));
 			clock_update_slave(c);
 			event = EV_RS_SLAVE;
+			break;
+		case PS_PASSIVE_SLAVE:
+			pr_notice("%s assuming the PASSIVE_SLAVE role",
+				  port_name(piter));
+			event = EV_RS_PASSIVE_SLAVE;
 			break;
 		default:
 			event = EV_FAULT_DETECTED;

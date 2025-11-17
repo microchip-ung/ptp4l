@@ -42,7 +42,7 @@ enum {
  * @return   A @ref port_state value as the recommended state.
  */
 enum port_state bmc_state_decision(struct clock *c, struct port *r,
-				   int (*comapre)(struct dataset *a, struct dataset *b));
+				   int (*comapre)(struct dataset *a, struct dataset *b, int a_qual, int b_qual));
 
 /**
  * Compare two data sets using the algorithm defined in IEEE 1588.
@@ -52,13 +52,13 @@ enum port_state bmc_state_decision(struct clock *c, struct port *r,
  *         if the dataset @a a is found, respectively, to be
  *         less than, to match, or be greater than @a b.
  */
-int dscmp(struct dataset *a, struct dataset *b);
+int dscmp(struct dataset *a, struct dataset *b, int a_qual, int b_qual);
 
 /**
  * Second part of the data set comparison algorithm, not for general
  * public use.
  */
-int dscmp2(struct dataset *a, struct dataset *b);
+int dscmp2(struct dataset *a, struct dataset *b, int a_qual, int b_qual);
 
 /**
  * Compare two data sets using the algorithm defined in the Telecom
@@ -70,6 +70,6 @@ int dscmp2(struct dataset *a, struct dataset *b);
  *         if the dataset @a a is found, respectively, to be
  *         less than, to match, or be greater than @a b.
  */
-int telecom_dscmp(struct dataset *a, struct dataset *b);
+int telecom_dscmp(struct dataset *a, struct dataset *b, int a_qual, int b_qual);
 
 #endif

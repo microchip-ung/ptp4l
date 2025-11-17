@@ -223,6 +223,7 @@ enum port_state ptp_fsm(enum port_state state, enum fsm_event event, int mdiff)
 			next = PS_PASSIVE;
 			break;
 		case EV_RS_PASSIVE_SLAVE:
+		case EV_SYNC_RECEIPT_TIMEOUT_EXPIRES:
 			next = PS_PASSIVE_SLAVE;
 			break;
 		default:
@@ -239,6 +240,7 @@ enum port_state ptp_fsm(enum port_state state, enum fsm_event event, int mdiff)
 			next = PS_FAULTY;
 			break;
 		case EV_RS_SLAVE:
+		case EV_SYNC_RECEIPT_TIMEOUT_EXPIRES:
 			next = PS_UNCALIBRATED;
 			break;
 		case EV_RS_GRAND_MASTER:

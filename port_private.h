@@ -36,6 +36,12 @@ enum syfu_state {
 	SF_HAVE_FUP,
 };
 
+enum red_type {
+	RED_NONE,
+	RED_HSR,
+	RED_PRP,
+};
+
 enum link_state {
 	LINK_DOWN  = (1<<0),
 	LINK_UP  = (1<<1),
@@ -76,6 +82,7 @@ struct port {
 	enum fsm_event (*event)(struct port *p, int fd_index);
 
 	int jbod;
+	int redundancy; /* 0 = none, 1 = hsr, 2 = prp */
 	struct foreign_clock *best;
 	enum syfu_state syfu;
 	struct ptp_message *last_syncfup;
@@ -164,6 +171,15 @@ struct port {
 	/* slave event monitoring */
 	struct monitor *slave_event_monitor;
 	bool unicast_state_dirty;
+
+	int red_port_lanid; /* pre-BMCA HACK */
+	int red_port_active; /* pre-BMCA HACK */
+	struct port *red_slave[2];          /* used by red_master */
+	struct interface *red_master_iface; /* used by red_slave */
+	struct port *red_master_port;       /* used by red_slave */
+	struct port *red_pair_port;         /* used by red_slave */
+	struct port *red_dispatch_port;     /* used in clock poll */
+	int red_rx_sync_missed;
 };
 
 #define portnum(p) (p->portIdentity.portNumber)

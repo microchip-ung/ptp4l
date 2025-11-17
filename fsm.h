@@ -55,6 +55,7 @@ enum fsm_event {
 	EV_RS_SLAVE,
 	EV_RS_PASSIVE,
 	EV_RS_PASSIVE_SLAVE,
+	EV_SYNC_RECEIPT_TIMEOUT_EXPIRES,
 };
 
 enum bmca_select {

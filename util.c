@@ -71,6 +71,7 @@ const char *ev_str[] = {
 	"RS_SLAVE",
 	"RS_PASSIVE",
 	"RS_PSLAVE",
+	"SYNC_RECEIPT_TIMEOUT_EXPIRES",
 };
 
 const char *ts_str(enum timestamp_type ts)
