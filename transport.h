@@ -174,4 +174,8 @@ int transport_red_sendmsg(struct transport *t, struct fdarray *fda, int event,
  */
 int transport_red_peermsg(struct transport *t, struct fdarray *fda, int event,
 			  struct ptp_message *msg);
+
+/* Receive a timestamp on a redundancy port. */
+int transport_red_txts(struct fdarray *fda,
+		       struct ptp_message *msg);
 #endif

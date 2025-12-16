@@ -78,6 +78,18 @@ int transport_txts(struct fdarray *fda,
 	return cnt > 0 ? 0 : cnt;
 }
 
+int transport_red_txts(struct fdarray *fda,
+		       struct ptp_message *msg)
+{
+	int cnt, len = ntohs(msg->header.messageLength);
+	struct hw_timestamp *hwts = &msg->hwts;
+	unsigned char pkt[1600];
+
+	cnt = sk_red_receive(fda->fd[FD_EVENT], pkt, len, NULL, hwts,
+			     &msg->redinfo, MSG_ERRQUEUE);
+	return cnt > 0 ? 0 : cnt;
+}
+
 int transport_red_recv(struct transport *t, int fd, struct ptp_message *msg)
 {
 	return t->red_recv(t, fd, msg, sizeof(msg->data), &msg->address,
