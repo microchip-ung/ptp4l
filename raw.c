@@ -197,7 +197,11 @@ static int raw_close(struct transport *t, struct fdarray *fda)
 {
 	struct raw *raw = container_of(t, struct raw, t);
 
-	sk_timestamping_destroy(fda->fd[0], raw->name);
+	/* Do not try to disable HWTS for slave ports in a redundancy setup
+	 * (will crash since raw->name is NULL).
+	 */
+	if (raw->name)
+		sk_timestamping_destroy(fda->fd[0], raw->name);
 
 	close(fda->fd[0]);
 	close(fda->fd[1]);
