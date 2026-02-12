@@ -48,6 +48,7 @@ const char *ps_str[] = {
 	"PASSIVE",
 	"UNCALIBRATED",
 	"SLAVE",
+	"PASSIVE_SLAVE",
 	"GRAND_MASTER",
 };
 
@@ -69,6 +70,8 @@ const char *ev_str[] = {
 	"RS_GRAND_MASTER",
 	"RS_SLAVE",
 	"RS_PASSIVE",
+	"RS_PSLAVE",
+	"SYNC_RECEIPT_TIMEOUT_EXPIRES",
 };
 
 const char *ts_str(enum timestamp_type ts)

@@ -86,6 +86,14 @@ struct hw_timestamp {
 	tmv_t sw;
 };
 
+struct redundancy_info {
+	uint8_t io_port;    /* tx/rx port of the skb */
+	uint8_t pathid;	    /* pathid in tag */
+	uint16_t ethertype; /* ethertype in tag */
+	uint16_t lsdu_size; /* lsdu size in tag */
+	uint16_t seqnr;	    /* seqnr in tag */
+};
+
 struct ptp_header {
 	uint8_t             tsmt; /* transportSpecific | messageType */
 	uint8_t             ver;  /* minorVersionPTP   | versionPTP  */
@@ -227,6 +235,10 @@ struct ptp_message {
 	 * SO_TIMESTAMPING socket option.
 	 */
 	struct hw_timestamp hwts;
+	/**
+	 * Contains HSR tag info
+	 */
+	struct redundancy_info redinfo;
 	/**
 	 * Contains the address this message was received from or should be
 	 * sent to.

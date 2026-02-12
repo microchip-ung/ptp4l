@@ -54,6 +54,8 @@ struct raw {
 	struct address p2p_addr;
 	int vlan;
 	char *name;
+	int efd_index; /* event fd index */
+	int gfd_index; /* general fd index */
 };
 
 #define PTP_GEN_BIT 0x08 /* indicates general message, if set in message type */
@@ -195,7 +197,11 @@ static int raw_close(struct transport *t, struct fdarray *fda)
 {
 	struct raw *raw = container_of(t, struct raw, t);
 
-	sk_timestamping_destroy(fda->fd[0], raw->name);
+	/* Do not try to disable HWTS for slave ports in a redundancy setup
+	 * (will crash since raw->name is NULL).
+	 */
+	if (raw->name)
+		sk_timestamping_destroy(fda->fd[0], raw->name);
 
 	close(fda->fd[0]);
 	close(fda->fd[1]);
@@ -345,9 +351,17 @@ static int raw_open(struct transport *t, struct interface *iface,
 	if (efd < 0)
 		goto no_event;
 
+	raw->efd_index = sk_interface_index(efd, name);
+	if (raw->efd_index < 0)
+		goto no_general;
+
 	gfd = open_socket(name, 0, ptp_dst_mac, p2p_dst_mac, socket_priority);
 	if (gfd < 0)
 		goto no_general;
+
+	raw->gfd_index = sk_interface_index(gfd, name);
+	if (raw->gfd_index < 0)
+		goto no_timestamping;
 
 	if (sk_timestamping_init(efd, name, ts_type, TRANS_IEEE_802_3,
 				 interface_get_vclock(iface)))
@@ -475,6 +489,131 @@ static int raw_protocol_addr(struct transport *t, uint8_t *addr)
 	return MAC_LEN;
 }
 
+/*     addr: Dst addr. For hdr dst and msg_name.
+ *           Use p2p_addr or ptp_addr if null.
+ *           src_addr: Use in hdr src
+ */
+static int raw_red_src_addr_sendmsg(struct transport *t, struct fdarray *fda,
+				    int event, int peer, void *buf, int len,
+				    struct address *addr,
+				    struct address *src_addr,
+				    struct hw_timestamp *hwts,
+				    struct redundancy_info *redinfo)
+{
+	int fd = event ? fda->fd[FD_EVENT] : fda->fd[FD_GENERAL];
+	char cbuf[CMSG_SPACE(sizeof(struct redundancy_info))];
+	struct raw *raw = container_of(t, struct raw, t);
+	unsigned char pkt[1600], *ptr = buf;
+	struct cmsghdr *cmsgp = NULL;
+	struct address msg_addr;
+	struct redundancy_info *rp;
+	struct eth_hdr *hdr;
+	struct msghdr msg;
+	struct iovec iov;
+	ssize_t cnt;
+
+	ptr -= sizeof(*hdr);
+	len += sizeof(*hdr);
+
+	if (!addr)
+		addr = peer ? &raw->p2p_addr : &raw->ptp_addr;
+
+	memset(&msg_addr, 0, sizeof(msg_addr));
+	memcpy(&msg_addr, addr, sizeof(msg_addr));
+	msg_addr.sll.sll_ifindex = event ? raw->efd_index : raw->gfd_index;
+
+	hdr = (struct eth_hdr *) ptr;
+	addr_to_mac(&hdr->dst, addr);
+	addr_to_mac(&hdr->src, src_addr);
+
+	hdr->type = htons(ETH_P_1588);
+
+	iov.iov_base = ptr;
+	iov.iov_len = len;
+
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_name = &msg_addr.sll;
+	msg.msg_namelen = sizeof(msg_addr.sll);
+
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+
+	memset(cbuf, 0, sizeof(cbuf));
+	msg.msg_control = cbuf;
+	msg.msg_controllen = sizeof(cbuf);
+
+	cmsgp = CMSG_FIRSTHDR(&msg);
+	cmsgp->cmsg_len = CMSG_LEN(sizeof(struct redundancy_info));
+	cmsgp->cmsg_level = SOL_SOCKET;
+	cmsgp->cmsg_type = SCM_REDUNDANCY;
+
+	rp = (struct redundancy_info *)CMSG_DATA(cmsgp);
+	memcpy(rp, redinfo, sizeof(*rp));
+
+	cnt = sendmsg(fd, &msg, 0);
+	if (cnt < 0) {
+		pr_err("red_src_addr_sendmsg: sendmsg: %m");
+		return -1;
+	}
+	/*
+	 * Get the timestamp right away.
+	 */
+	return event == TRANS_EVENT ?
+			sk_red_receive(fd, pkt, len, NULL, hwts, redinfo,
+				       MSG_ERRQUEUE) :
+			cnt;
+}
+
+static int raw_red_recv(struct transport *t, int fd, void *buf, int buflen,
+			struct address *addr, struct hw_timestamp *hwts,
+			struct redundancy_info *redinfo)
+{
+	struct raw *raw = container_of(t, struct raw, t);
+	unsigned char *ptr = buf;
+	struct eth_hdr *hdr;
+	int cnt, hlen;
+
+	if (raw->vlan)
+		hlen = sizeof(struct vlan_hdr);
+	else
+		hlen = sizeof(struct eth_hdr);
+
+	ptr    -= hlen;
+	buflen += hlen;
+	hdr = (struct eth_hdr *) ptr;
+
+	cnt = sk_red_receive(fd, ptr, buflen, addr, hwts, redinfo, 0);
+
+	if (cnt >= 0)
+		cnt -= hlen;
+	if (cnt < 0)
+		return cnt;
+
+	if (raw->vlan) {
+		if (ETH_P_1588 == ntohs(hdr->type)) {
+			pr_notice("raw: disabling VLAN mode");
+			raw->vlan = 0;
+		}
+	} else {
+		if (ETH_P_8021Q == ntohs(hdr->type)) {
+			pr_notice("raw: switching to VLAN mode");
+			raw->vlan = 1;
+		}
+	}
+	return cnt;
+}
+
+static int raw_red_sendmsg(struct transport *t, struct fdarray *fda, int event,
+			   int peer, void *buf, int len, struct address *addr,
+			   struct hw_timestamp *hwts,
+			   struct redundancy_info *redinfo)
+{
+	struct raw *raw = container_of(t, struct raw, t);
+
+	return raw_red_src_addr_sendmsg(t, fda, event, peer, buf, len,
+					addr, &raw->src_addr, hwts, redinfo);
+}
+
 struct transport *raw_transport_create(void)
 {
 	struct raw *raw;
@@ -488,5 +627,7 @@ struct transport *raw_transport_create(void)
 	raw->t.release = raw_release;
 	raw->t.physical_addr = raw_physical_addr;
 	raw->t.protocol_addr = raw_protocol_addr;
+	raw->t.red_recv = raw_red_recv;
+	raw->t.red_sendmsg = raw_red_sendmsg;
 	return &raw->t;
 }

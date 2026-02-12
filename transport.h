@@ -153,4 +153,29 @@ struct transport *transport_create(struct config *cfg,
  */
 void transport_destroy(struct transport *t);
 
+/**
+ * Redundancy version of transport_recv. Receives message together with
+ * redundancy info and timestamp for event messages.
+ */
+int transport_red_recv(struct transport *t, int fd, struct ptp_message *msg);
+
+/**
+ * Sends PTP message, including redundancy information, through a
+ * redundant interface. A particular port of the redundant interface
+ * through which the message is sent can be specified.
+ */
+int transport_red_sendmsg(struct transport *t, struct fdarray *fda, int event,
+			  struct ptp_message *msg);
+
+/**
+ * Sends PTP message, including redundancy information, through a
+ * redundant interface using p2p address. A particular port of the
+ * redundant interface through which the message is sent can be specified.
+ */
+int transport_red_peermsg(struct transport *t, struct fdarray *fda, int event,
+			  struct ptp_message *msg);
+
+/* Receive a timestamp on a redundancy port. */
+int transport_red_txts(struct fdarray *fda,
+		       struct ptp_message *msg);
 #endif

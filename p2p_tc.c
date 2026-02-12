@@ -37,6 +37,7 @@ static int p2p_delay_request(struct port *p)
 	case PS_PASSIVE:
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
+	case PS_PASSIVE_SLAVE:
 	case PS_GRAND_MASTER:
 		break;
 	}
@@ -87,6 +88,8 @@ void p2p_dispatch(struct port *p, enum fsm_event event, int mdiff)
 	case PS_SLAVE:
 		port_set_announce_tmo(p);
 		break;
+	case PS_PASSIVE_SLAVE:
+		break;
 	};
 }
 
@@ -95,6 +98,7 @@ enum fsm_event p2p_event(struct port *p, int fd_index)
 	int cnt, fd = p->fda.fd[fd_index];
 	enum fsm_event event = EV_NONE;
 	struct ptp_message *msg, *dup;
+	struct port *red_master;
 
 	switch (fd_index) {
 	case FD_ANNOUNCE_TIMER:
@@ -137,13 +141,26 @@ enum fsm_event p2p_event(struct port *p, int fd_index)
 		}
 	}
 
+	/* In redundancy, slave ports do not receive msgs from
+	 * network directly. Only red master does.
+	 */
+	if (red_hsr_slave_port(p)) {
+		pr_warning("Error: red slave %s receives msgs: fd_index=%d",
+			   p->name, fd_index);
+		return EV_NONE;
+	}
+
 	msg = msg_allocate();
 	if (!msg) {
 		return EV_FAULT_DETECTED;
 	}
 	msg->hwts.type = p->timestamping;
 
-	cnt = transport_recv(p->trp, fd, msg);
+	if (red_hsr_port(p))
+		cnt = transport_red_recv(p->trp, fd, msg);
+	else
+		cnt = transport_recv(p->trp, fd, msg);
+
 	if (cnt <= 0) {
 		pr_err("%s: recv message failed", p->log_name);
 		msg_put(msg);
@@ -166,6 +183,49 @@ enum fsm_event p2p_event(struct port *p, int fd_index)
 	if (tc_ignore(p, dup)) {
 		msg_put(dup);
 		dup = NULL;
+	}
+
+	if (red_hsr_port(p)) {
+		/* Save the red master port that receives the msg */
+		red_master = p;
+
+		pr_debug("port %s: received %s msg",
+			 port_name(p),
+			 msg_type_string(msg_type(msg)));
+
+		switch (msg_type(msg)) {
+		case ANNOUNCE:
+		case SYNC:
+		case FOLLOW_UP:
+		case PDELAY_REQ:
+		case PDELAY_RESP:
+		case PDELAY_RESP_FOLLOW_UP:
+			/* The red slave port that is going to
+			 * process the received msg.
+			 */
+			p = red_rx_msg_get_port(p, msg);
+			if (!p) {
+				pr_err("Msg %d: no red port found",
+				       msg_type(msg));
+				msg_put(msg);
+				return EV_NONE;
+			} else {
+				pr_notice("Chosen slave port: %s", port_name(p));
+			}
+			/* Save the red slave port so that port_dispatch
+			 * will dispatch the right port to process the
+			 * event, e.g. EV_STATE_DECISION, returned after
+			 * processing the received message.
+			 */
+			red_master->red_dispatch_port = p;
+			break;
+		case DELAY_REQ:
+		case DELAY_RESP:
+		case SIGNALING:
+		case MANAGEMENT:
+		default:
+			break;
+		}
 	}
 
 	switch (msg_type(msg)) {

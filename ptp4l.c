@@ -77,6 +77,8 @@ int main(int argc, char *argv[])
 	struct option *opts;
 	struct config *cfg;
 
+	fprintf(stderr, "ptp4l with HSR support\n");
+
 	if (handle_term_signals())
 		return -1;
 

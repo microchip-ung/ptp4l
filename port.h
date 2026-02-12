@@ -378,5 +378,21 @@ int port_set_sync_tx_tmo(struct port *p);
  */
 int port_set_manno_tmo(struct port *p);
 
+/**
+ * @param port        A port instance.
+ */
+int port_redundancy_setup(struct port *port);
+int red_master_port(struct port *port);
+int red_hsr_master_port(struct port *port);
+int red_slave_port(struct port *port);
+int red_hsr_slave_port(struct port *port);
+int red_port_quality(struct port *port);
+struct port *port_get_dispatch_port(struct port *p);
+void port_release_dispatch_port(struct port *orig, struct port *p);
+const char *port_name(struct port *p);
+short port_fault_fd_events(struct port *port);
+int red_hsr_port(struct port *p);
+int red_port(struct port *p);
+struct port *red_rx_msg_get_port(struct port *p, struct ptp_message *msg);
 
 #endif

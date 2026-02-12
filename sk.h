@@ -129,6 +129,9 @@ int sk_interface_addr(const char *name, int family, struct address *addr);
  */
 int sk_receive(int fd, void *buf, int buflen,
 	       struct address *addr, struct hw_timestamp *hwts, int flags);
+int sk_red_receive(int fd, void *buf, int buflen,
+		   struct address *addr, struct hw_timestamp *hwts,
+		   struct redundancy_info *redinfo, int flags);
 
 /**
  * Get and clear a pending socket error.

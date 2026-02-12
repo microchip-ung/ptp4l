@@ -510,6 +510,102 @@ int sk_receive(int fd, void *buf, int buflen,
 	return cnt < 0 ? -errno : cnt;
 }
 
+int sk_red_receive(int fd, void *buf, int buflen,
+		   struct address *addr, struct hw_timestamp *hwts,
+		   struct redundancy_info *redinfo, int flags)
+{
+	struct iovec iov = { buf, buflen };
+	int cnt = 0, res = 0, level, type;
+	struct timespec *sw, *ts = NULL;
+	struct cmsghdr *cm;
+	char control[256];
+	struct msghdr msg;
+
+	memset(control, 0, sizeof(control));
+	memset(&msg, 0, sizeof(msg));
+	if (addr) {
+		msg.msg_name = &addr->ss;
+		msg.msg_namelen = sizeof(addr->ss);
+	}
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = control;
+	msg.msg_controllen = sizeof(control);
+
+	if (flags == MSG_ERRQUEUE) {
+		struct pollfd pfd = { fd, sk_events, 0 };
+		res = poll(&pfd, 1, sk_tx_timeout);
+		if (res < 1) {
+			pr_err(res ? "poll for tx timestamp failed: %m" :
+				     "timed out while polling for tx timestamp");
+			return res;
+		} else if (!(pfd.revents & sk_revents)) {
+			pr_err("poll for tx timestamp woke up on non ERR event");
+			return -1;
+		}
+	}
+
+	cnt = recvmsg(fd, &msg, flags);
+	if (cnt < 1)
+		pr_err("recvmsg%sfailed: %m",
+		       flags == MSG_ERRQUEUE ? " tx timestamp " : " ");
+
+	for (cm = CMSG_FIRSTHDR(&msg); cm != NULL; cm = CMSG_NXTHDR(&msg, cm)) {
+		level = cm->cmsg_level;
+		type  = cm->cmsg_type;
+		if (level != SOL_SOCKET)
+			continue;
+
+		if (SO_TIMESTAMPING == type) {
+			if (cm->cmsg_len < sizeof(*ts) * 3) {
+				pr_warning("short SO_TIMESTAMPING message");
+				return -1;
+			}
+			ts = (struct timespec *) CMSG_DATA(cm);
+		} else if (SO_TIMESTAMPNS == type) {
+			if (cm->cmsg_len < sizeof(*sw)) {
+				pr_warning("short SO_TIMESTAMPNS message");
+				return -1;
+			}
+			sw = (struct timespec *) CMSG_DATA(cm);
+			hwts->sw = timespec_to_tmv(*sw);
+		} else if (SO_REDUNDANCY == type) {
+			struct redundancy_info *red;
+
+			if (cm->cmsg_len < sizeof(*red)) {
+				pr_warning("short SO_REDUNDANCY message");
+				return -1;
+			}
+
+			red = (struct redundancy_info *) CMSG_DATA(cm);
+			memcpy(redinfo, red, sizeof(*redinfo));
+		}
+	}
+
+	if (addr)
+		addr->len = msg.msg_namelen;
+
+	if (!ts) {
+		memset(&hwts->ts, 0, sizeof(hwts->ts));
+		return cnt;
+	}
+
+	switch (hwts->type) {
+	case TS_SOFTWARE:
+		hwts->ts = timespec_to_tmv(ts[0]);
+		break;
+	case TS_HARDWARE:
+	case TS_ONESTEP:
+	case TS_P2P1STEP:
+		hwts->ts = timespec_to_tmv(ts[2]);
+		break;
+	case TS_LEGACY_HW:
+		hwts->ts = timespec_to_tmv(ts[1]);
+		break;
+	}
+	return cnt;
+}
+
 int sk_get_error(int fd)
 {
 	socklen_t len;

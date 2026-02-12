@@ -175,4 +175,9 @@ static inline tmv_t pct_to_tmv(struct ptp_clock_time pct)
 	return t;
 }
 
+static inline int ts_valid(tmv_t *ts)
+{
+	return (ts->ns) ? 1 : 0;
+}
+
 #endif

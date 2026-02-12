@@ -94,7 +94,7 @@ struct currentDS *clock_current_dataset(struct clock *c);
  * @param c  The clock instance.
  * @return   A pointer to the data set comparison function, without fail.
  */
-int (*clock_dscmp(struct clock *c))(struct dataset *a, struct dataset *b);
+int (*clock_dscmp(struct clock *c))(struct dataset *a, struct dataset *b, int a_qual, int b_qual);
 
 /**
  * Obtains the required time stamping mode.

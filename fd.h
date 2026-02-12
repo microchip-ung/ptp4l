@@ -47,6 +47,8 @@ enum {
 
 struct fdarray {
 	int fd[N_POLLFD];
+	short events[N_POLLFD];
+	int events_valid;
 };
 
 #endif

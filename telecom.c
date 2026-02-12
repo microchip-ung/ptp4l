@@ -23,8 +23,7 @@
 #include "bmc.h"
 #include "ds.h"
 
-int telecom_dscmp(struct dataset *a, struct dataset *b)
-{
+int telecom_dscmp(struct dataset *a, struct dataset *b, int a_qual, int b_qual) {
 	int diff;
 
 	if (a == b)
@@ -62,12 +61,12 @@ int telecom_dscmp(struct dataset *a, struct dataset *b)
 		return B_BETTER;
 
 	if (a->quality.clockClass <= 127)
-		return dscmp2(a, b);
+		return dscmp2(a, b, a_qual, b_qual);
 
 	diff = memcmp(&a->identity, &b->identity, sizeof(a->identity));
 
 	if (!diff)
-		return dscmp2(a, b);
+		return dscmp2(a, b, a_qual, b_qual);
 
 	return diff < 0 ? A_BETTER : B_BETTER;
 }

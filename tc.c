@@ -22,8 +22,52 @@
 #include "print.h"
 #include "tc.h"
 #include "tmv.h"
+#include "missing.h"
 
 static TAILQ_HEAD(tc_pool, tc_txd) tc_pool = TAILQ_HEAD_INITIALIZER(tc_pool);
+
+static int tc_red_fwd(struct port *p, enum transport_event event,
+		      struct ptp_message *msg)
+{
+	int cnt;
+
+	if (red_hsr_master_port(p)) {
+		pr_info("%s: got master port, expected a slave port", __func__);
+		return -1;
+	}
+
+	if (red_hsr_slave_port(p)) {
+		/* Determine which leg the frame came in on */
+		if (msg->redinfo.io_port & RED_PORT_A) {
+			msg->redinfo.io_port = DIRECTED_TX | RED_PORT_B;
+		} else if (msg->redinfo.io_port & RED_PORT_B) {
+			msg->redinfo.io_port = DIRECTED_TX | RED_PORT_A;
+		} else {
+			pr_info("%s: unexpected io_port: %u", __func__,
+				msg->redinfo.io_port);
+
+			return -1;
+		}
+
+		pr_debug("%s: Forwarding %s message from: %s to %s",
+			__func__,
+			msg_type_string(msg_type(msg)),
+			msg->redinfo.io_port & RED_PORT_A ? "B" : "A",
+			msg->redinfo.io_port & RED_PORT_A ? "A" : "B");
+
+		cnt = transport_red_sendmsg(p->red_master_port->trp,
+					    &p->red_master_port->fda,
+					    event,
+					    msg);
+	} else {
+		cnt = transport_send(p->trp, &p->fda, event, msg);
+	}
+
+	if (cnt <= 0)
+		return -1;
+
+	return cnt;
+}
 
 static int tc_match_delay(int ingress_port, struct ptp_message *resp,
 			  struct tc_txd *txd);
@@ -128,13 +172,12 @@ static void tc_complete_syfup(struct port *q, struct port *p,
 		TAILQ_INSERT_TAIL(&p->tc_transmitted, txd, list);
 		return;
 	}
-
 	c1 = net2host64(fup->header.correction);
 	c2 = c1 + tmv_to_TimeInterval(residence);
 	c2 += tmv_to_TimeInterval(q->peer_delay);
 	c2 += q->asymmetry;
 	fup->header.correction = host2net64(c2);
-	cnt = transport_send(p->trp, &p->fda, TRANS_GENERAL, fup);
+	cnt = tc_red_fwd(p, TRANS_GENERAL, fup);
 	if (cnt <= 0) {
 		pr_err("tc failed to forward follow up on %s", p->log_name);
 		port_dispatch(p, EV_FAULT_DETECTED, 0);
@@ -170,7 +213,11 @@ static int tc_fwd_event(struct port *q, struct ptp_message *msg)
 		if (tc_blocked(q, p, msg)) {
 			continue;
 		}
-		cnt = transport_send(p->trp, &p->fda, TRANS_DEFER_EVENT, msg);
+
+		if (red_hsr_master_port(p))
+			continue;
+
+		cnt = tc_red_fwd(p, TRANS_DEFER_EVENT, msg);
 		if (cnt <= 0) {
 			pr_err("failed to forward event from %s to %s",
 				q->log_name, p->log_name);
@@ -183,7 +230,16 @@ static int tc_fwd_event(struct port *q, struct ptp_message *msg)
 		if (tc_blocked(q, p, msg)) {
 			continue;
 		}
-		err = transport_txts(&p->fda, msg);
+
+		if (red_hsr_master_port(p))
+			continue;
+
+		if (red_hsr_slave_port(p)) {
+			/* Read timestamp from master. */
+			err = transport_red_txts(&p->red_master_port->fda, msg);
+		} else {
+			err = transport_txts(&p->fda, msg);
+		}
 		if (err || !msg_sots_valid(msg)) {
 			pr_err("failed to fetch txts on %s to %s event",
 				q->log_name, p->log_name);
@@ -264,6 +320,7 @@ int tc_blocked(struct port *q, struct port *p, struct ptp_message *m)
 	case PS_LISTENING:
 	case PS_PRE_MASTER:
 	case PS_PASSIVE:
+	case PS_PASSIVE_SLAVE:
 		return 1;
 	case PS_MASTER:
 	case PS_GRAND_MASTER:
@@ -285,6 +342,7 @@ int tc_blocked(struct port *q, struct port *p, struct ptp_message *m)
 	case PS_LISTENING:
 	case PS_PRE_MASTER:
 	case PS_PASSIVE:
+	case PS_PASSIVE_SLAVE:
 		return 1;
 	case PS_UNCALIBRATED:
 	case PS_SLAVE:
@@ -383,7 +441,11 @@ int tc_forward(struct port *q, struct ptp_message *msg)
 		if (tc_blocked(q, p, msg)) {
 			continue;
 		}
-		cnt = transport_send(p->trp, &p->fda, TRANS_GENERAL, msg);
+
+		if (red_hsr_master_port(p))
+			continue;
+
+		cnt = tc_red_fwd(p, TRANS_GENERAL, msg);
 		if (cnt <= 0) {
 			pr_err("tc failed to forward message on %s",
 			       p->log_name);
@@ -403,6 +465,8 @@ int tc_fwd_folup(struct port *q, struct ptp_message *msg)
 		if (tc_blocked(q, p, msg)) {
 			continue;
 		}
+		if (red_hsr_master_port(p))
+			continue;
 		tc_complete(q, p, msg, tmv_zero());
 	}
 	return 0;
