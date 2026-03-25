@@ -1901,6 +1901,12 @@ int clock_poll(struct clock *c)
 						piter = NULL;
 						continue;
 					}
+					/* Re-capture prior_state from the
+					 * dispatched port so the FAULTY
+					 * check below works correctly for
+					 * HSR slave ports.
+					 */
+					prior_state = port_state(p);
 				}
 				port_dispatch(p, event, 0);
 				/* Clear any fault after a little while. */
