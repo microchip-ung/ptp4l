@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/queue.h>
 
 #include "address.h"
@@ -157,6 +158,13 @@ static void handle_state_decision_event(struct clock *c);
 static int clock_resize_pollfd(struct clock *c, int new_nports);
 static void clock_remove_port(struct clock *c, struct port *p);
 static void clock_stats_display(struct clock_stats *s);
+
+static void sk_recv_drain(int fd, int extra_flags)
+{
+	unsigned char buf[1600];
+
+	recv(fd, buf, sizeof(buf), MSG_DONTWAIT | extra_flags);
+}
 
 static int clock_alttime_offset_append(struct clock *c, int key, struct ptp_message *m)
 {
@@ -1895,8 +1903,13 @@ int clock_poll(struct clock *c)
 					piter = p;
 					p = port_get_dispatch_port(piter);
 					if (!p) {
-						pr_err("%s: No red dispatch port",
-						       port_name(piter));
+						pr_debug("%s: no red dispatch port",
+							 port_name(piter));
+						/* Drain one pending frame to
+						 * prevent busy-loop when the
+						 * socket has unconsumed data.
+						 */
+						sk_recv_drain(cur[i].fd, 0);
 						p = piter;
 						piter = NULL;
 						continue;
