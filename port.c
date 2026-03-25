@@ -2720,6 +2720,20 @@ calc:
 
 int process_pdelay_resp(struct port *p, struct ptp_message *m)
 {
+	/* In HSR, Pdelay_Resp is forwarded around the ring and a copy
+	 * may arrive on the opposite leg. Drop cross-leg responses
+	 * early, before the "multiple peer responses" check, by
+	 * verifying the requestingPortIdentity matches this port.
+	 */
+	if (red_port(p) && p->peer_delay_req &&
+	    !pid_eq(&m->pdelay_resp.requestingPortIdentity,
+		    &p->portIdentity)) {
+		pr_debug("%s: dropping cross-leg pdelay_resp from %s",
+			 p->log_name,
+			 pid2str(&m->header.sourcePortIdentity));
+		return 0;
+	}
+
 	if (p->peer_delay_resp) {
                 if (!p->multiple_pdr_detected) {
                         pr_err("%s: multiple peer responses", p->log_name);
