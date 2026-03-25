@@ -3385,6 +3385,11 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 				msg_put(msg);
 				return EV_NONE;
 			}
+			/* Do not dispatch to FAULTY slave ports. */
+			if (p->state == PS_FAULTY) {
+				msg_put(msg);
+				return EV_NONE;
+			}
 			/* Save the red slave port so that port_dispatch
 			 * will dispatch the right port to process the
 			 * event, e.g. EV_STATE_DECISION, returned after
