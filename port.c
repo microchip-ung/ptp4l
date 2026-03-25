@@ -3170,6 +3170,19 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 	struct port *red_master;
 	int orig_syfu_miss;
 
+	/* A FAULTY HSR slave port's timers may still appear ready from
+	 * stale poll() revents after port_disable() closed the fds
+	 * mid-iteration. Ignore timer events on FAULTY HSR ports, only
+	 * link status (FD_RTNL) and socket fds are relevant.
+	 */
+	if (red_hsr_port(p) &&
+	    p->state == PS_FAULTY &&
+	    fd_index != FD_RTNL &&
+	    fd_index != FD_EVENT &&
+	    fd_index != FD_GENERAL) {
+		return EV_NONE;
+	}
+
 	switch (fd_index) {
 	case FD_ANNOUNCE_TIMER:
 	case FD_SYNC_RX_TIMER:
