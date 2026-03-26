@@ -473,7 +473,7 @@ static inline int timerfd_settime(int fd, int flags,
 
 #include <sys/timerfd.h>
 
-#define BIT(nr)			(1 << (nr))
+#define BIT(nr)			(1UL << (nr))
 
 #ifndef SO_REDUNDANCY
 #define SO_REDUNDANCY		85
