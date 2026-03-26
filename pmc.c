@@ -465,7 +465,7 @@ static void pmc_show(struct ptp_message *msg, FILE *fp)
 		break;
 	case MID_PORT_DATA_SET:
 		p = (struct portDS *) mgt->data;
-		if (p->portState > PS_SLAVE) {
+		if (p->portState > PS_GRAND_MASTER) {
 			p->portState = 0;
 		}
 		fprintf(fp, "PORT_DATA_SET "
