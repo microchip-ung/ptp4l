@@ -1886,10 +1886,17 @@ int clock_poll(struct clock *c)
 			if (cur[i].revents & (POLLIN|POLLPRI|POLLERR)) {
 				prior_state = port_state(p);
 				if (cur[i].revents & POLLERR) {
-					int error = sk_get_error(cur[i].fd);
+					/* Drain the error queue to clear
+					 * POLLERR from stale TX timestamps.
+					 */
+					if (red_master_port(p)) {
+						sk_recv_drain(cur[i].fd,
+							      MSG_ERRQUEUE);
+						continue;
+					}
 					pr_err("%s: error on fda[%d]: %s",
 					       port_log_name(p), i,
-					       strerror(error));
+					       strerror(sk_get_error(cur[i].fd)));
 					event = EV_FAULT_DETECTED;
 				} else {
 					event = port_event(p, i);
