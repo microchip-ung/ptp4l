@@ -210,7 +210,7 @@ enum fsm_event p2p_event(struct port *p, int fd_index)
 				msg_put(msg);
 				return EV_NONE;
 			} else {
-				pr_notice("Chosen slave port: %s", port_name(p));
+				pr_debug("Chosen slave port: %s", port_name(p));
 			}
 			/* Save the red slave port so that port_dispatch
 			 * will dispatch the right port to process the
