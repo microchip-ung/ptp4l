@@ -720,7 +720,7 @@ static int peer_prepare_and_send(struct port *p, struct ptp_message *msg,
 	if (msg_unicast(msg)) {
 		cnt = transport_sendto(p->trp, &p->fda, event, msg);
 	} else {
-		if (red_hsr_port(p)) {
+		if (red_hsr_slave_port(p)) {
 			t = p->red_master_port->trp;
 			fda = &p->red_master_port->fda;
 			cnt = transport_red_peermsg(t, fda, event, msg);
