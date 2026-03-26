@@ -31,6 +31,7 @@
 #include "clock.h"
 #include "clockadj.h"
 #include "clockcheck.h"
+#include "dm.h"
 #include "foreign.h"
 #include "filter.h"
 #include "missing.h"
@@ -1483,10 +1484,13 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 
 	c->dds.numberPorts = c->nports;
 
-	/* Link up redundant paired ports as
-	 * well as redundant master and slave
-	 */
+	/* Validate and link up redundant ports. */
 	LIST_FOREACH(p, &c->ports, list) {
+		if (red_port(p) && port_delay_mechanism(p) != DM_P2P) {
+			pr_err("HSR redundancy requires delay_mechanism P2P "
+			       "on port '%s'.", port_log_name(p));
+			return NULL;
+		}
 		port_redundancy_setup(p);
 	}
 
