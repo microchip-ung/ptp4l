@@ -1140,6 +1140,13 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 		clock_destroy(c);
 	}
 
+	if (config_get_int(config, NULL, "redundancy")) {
+		pr_err("'redundancy' must not be set in the [global] section. "
+		       "Set it per-port to avoid contaminating "
+		       "non-network ports (e.g., the UDS management port).");
+		return NULL;
+	}
+
 	switch (type) {
 	case CLOCK_TYPE_ORDINARY:
 	case CLOCK_TYPE_BOUNDARY:
