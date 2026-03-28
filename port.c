@@ -2024,6 +2024,7 @@ int port_initialize(struct port *p)
 	p->peerMeanPathDelay       = 0;
 	p->initialLogAnnounceInterval = config_get_int(cfg, p->name, "logAnnounceInterval");
 	p->logAnnounceInterval     = p->initialLogAnnounceInterval;
+	p->hw_tc_fwd               = config_get_int(cfg, p->name, "hw_tc_fwd");
 	p->inhibit_announce        = config_get_int(cfg, p->name, "inhibit_announce");
 	p->ignore_source_id        = config_get_int(cfg, p->name, "ignore_source_id");
 	p->announceReceiptTimeout  = config_get_int(cfg, p->name, "announceReceiptTimeout");
@@ -3217,6 +3218,11 @@ enum fsm_event port_event(struct port *p, int fd_index)
  * already in host byte order, double-swapping fields and tripping
  * -EBADMSG. Returns NULL when there is nothing to forward (non-HSR
  * port or pool exhaustion).
+ *
+ * On platforms where the switch ASIC forwards PTP event frames around
+ * the ring in hardware the software forward would be a duplicate. Skip the
+ * snapshot entirely when hw_tc_fwd is set on the receiving HSR master port;
+ * the downstream bc_red_hsr_forward() is a no-op for a NULL raw.
  */
 static struct ptp_message *bc_red_hsr_snapshot(struct port *p,
 					       struct ptp_message *msg)
@@ -3224,6 +3230,9 @@ static struct ptp_message *bc_red_hsr_snapshot(struct port *p,
 	struct ptp_message *raw;
 
 	if (!red_hsr_port(p))
+		return NULL;
+
+	if (p->hw_tc_fwd)
 		return NULL;
 
 	raw = msg_allocate();
