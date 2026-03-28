@@ -108,6 +108,7 @@ struct port {
 	enum port_state (*state_machine)(enum port_state state,
 					 enum fsm_event event, int mdiff);
 	int bmca;
+	int hw_tc_fwd;
 	int inhibit_announce;
 	int ignore_source_id;
 	int inhibit_delay_req;

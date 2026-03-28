@@ -169,6 +169,8 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 
 	switch (msg_type(msg)) {
 	case SYNC:
+		if (p->hw_tc_fwd)
+			break; /* HW handles forwarding with RESI */
 		if (tc_fwd_sync(p, msg)) {
 			event = EV_FAULT_DETECTED;
 			break;
@@ -178,6 +180,8 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 		}
 		break;
 	case DELAY_REQ:
+		if (p->hw_tc_fwd)
+			break; /* HW forwards with RESI */
 		if (tc_fwd_request(p, msg)) {
 			event = EV_FAULT_DETECTED;
 		}
@@ -187,6 +191,8 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 	case PDELAY_RESP:
 		break;
 	case FOLLOW_UP:
+		if (p->hw_tc_fwd)
+			break; /* HW forwards without modification */
 		if (tc_fwd_folup(p, msg)) {
 			event = EV_FAULT_DETECTED;
 			break;
@@ -196,6 +202,8 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 		}
 		break;
 	case DELAY_RESP:
+		if (p->hw_tc_fwd)
+			break; /* HW forwards without modification */
 		if (tc_fwd_response(p, msg)) {
 			event = EV_FAULT_DETECTED;
 		}
@@ -206,6 +214,8 @@ enum fsm_event e2e_event(struct port *p, int fd_index)
 	case PDELAY_RESP_FOLLOW_UP:
 		break;
 	case ANNOUNCE:
+		if (p->hw_tc_fwd)
+			break; /* HW forwards without modification */
 		if (tc_forward(p, msg)) {
 			event = EV_FAULT_DETECTED;
 			break;
