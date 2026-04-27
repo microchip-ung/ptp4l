@@ -4016,6 +4016,50 @@ struct port *port_open(const char *phc_device,
 		pr_warning("%s: net_sync_monitor needs hybrid_e2e", p->log_name);
 	}
 
+	/* IEC/IEEE 61850-9-3 power profile compliance checks */
+	if (!port_is_uds(p) &&
+	    p->pwr.version == IEEE_C37_238_VERSION_2017) {
+		if (p->logAnnounceInterval != 0) {
+			pr_warning("%s: power profile requires logAnnounceInterval 0",
+				   p->log_name);
+		}
+		if (p->logSyncInterval != 0) {
+			pr_warning("%s: power profile requires logSyncInterval 0",
+				   p->log_name);
+		}
+		if (p->logMinPdelayReqInterval != 0) {
+			pr_warning("%s: power profile requires logMinPdelayReqInterval 0",
+				   p->log_name);
+		}
+		if (p->announceReceiptTimeout != 3) {
+			pr_warning("%s: power profile requires announceReceiptTimeout 3",
+				   p->log_name);
+		}
+		if (p->delayMechanism != DM_P2P) {
+			pr_warning("%s: power profile requires P2P delay mechanism",
+				   p->log_name);
+		}
+		if (transport_type(p->trp) != TRANS_IEEE_802_3) {
+			pr_warning("%s: power profile requires L2 transport",
+				   p->log_name);
+		}
+		if (clock_domain_number(p->clock) != 0 &&
+		    clock_domain_number(p->clock) != 93) {
+			pr_warning("%s: power profile requires domainNumber 0 or 93",
+				   p->log_name);
+		}
+		if (clock_slave_only(p->clock)) {
+			if (clock_priority1(p->clock) != 255) {
+				pr_warning("%s: power profile requires priority1 255 for slave-only",
+					   p->log_name);
+			}
+			if (clock_priority2(p->clock) != 255) {
+				pr_warning("%s: power profile requires priority2 255 for slave-only",
+					   p->log_name);
+			}
+		}
+	}
+
 	/* Set fault timeouts to a default value */
 	for (i = 0; i < FT_CNT; i++) {
 		p->flt_interval_pertype[i].type = FTMO_LOG2_SECONDS;

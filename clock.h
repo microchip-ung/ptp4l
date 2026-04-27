@@ -138,6 +138,20 @@ void clock_destroy(struct clock *c);
 UInteger8 clock_domain_number(struct clock *c);
 
 /**
+ * Obtain priority1 from a clock's default data set.
+ * @param c  The clock instance.
+ * @return   The configured priority1 value.
+ */
+UInteger8 clock_priority1(struct clock *c);
+
+/**
+ * Obtain priority2 from a clock's default data set.
+ * @param c  The clock instance.
+ * @return   The configured priority2 value.
+ */
+UInteger8 clock_priority2(struct clock *c);
+
+/**
  * Obtains a reference to the first port in the clock's list.
  * @param c  The clock instance.
  * @return   A pointer to a port, or NULL if no ports are present.

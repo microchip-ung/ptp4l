@@ -1536,6 +1536,16 @@ UInteger8 clock_domain_number(struct clock *c)
 	return c->dds.domainNumber;
 }
 
+UInteger8 clock_priority1(struct clock *c)
+{
+	return c->dds.priority1;
+}
+
+UInteger8 clock_priority2(struct clock *c)
+{
+	return c->dds.priority2;
+}
+
 struct port *clock_first_port(struct clock *c)
 {
 	return LIST_FIRST(&c->ports);
