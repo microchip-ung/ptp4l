@@ -38,6 +38,7 @@
 #include "msg.h"
 #include "phc.h"
 #include "port.h"
+#include "power_profile.h"
 #include "servo.h"
 #include "stats.h"
 #include "print.h"
@@ -1563,6 +1564,50 @@ void clock_power_profile_set_received_inaccuracy(struct clock *c, UInteger32 val
 UInteger32 clock_power_profile_get_received_inaccuracy(struct clock *c)
 {
 	return c->pwr_received_inaccuracy;
+}
+
+UInteger32 clock_power_profile_tc_increment(struct ptp_message *m, UInteger32 add)
+{
+	/*
+	 * The TC forwarding path does not go through msg_post_recv, so
+	 * m->tlv_list is empty and struct fields remain in network byte
+	 * order. Walk the Announce suffix using struct overlays.
+	 */
+	uint8_t *p = (uint8_t *) m->announce.suffix;
+	ssize_t remaining = (ssize_t) ntohs(m->header.messageLength)
+			    - (ssize_t) sizeof(struct announce_msg);
+
+	while (remaining >= (ssize_t) sizeof(struct TLV)) {
+		struct TLV *hdr = (struct TLV *) p;
+		size_t tlv_size = sizeof(*hdr) + ntohs(hdr->length);
+
+		if ((ssize_t) tlv_size > remaining)
+			break;
+
+		if (ntohs(hdr->type) == TLV_ORGANIZATION_EXTENSION &&
+		    tlv_size == sizeof(struct ieee_c37_238_2017_tlv)) {
+			struct ieee_c37_238_2017_tlv *org =
+				(struct ieee_c37_238_2017_tlv *) p;
+
+			if (!memcmp(org->id, ieeec37_238_id, sizeof(org->id)) &&
+			    !org->subtype[0] && !org->subtype[1] &&
+			    org->subtype[2] == C37_238_2017_SUBTYPE) {
+				UInteger32 total, sum;
+
+				total = ntohl(org->totalTimeInaccuracy);
+				if (total == C37_238_TIME_INACCURACY_UNKNOWN)
+					return total;
+				sum = total + add;
+				if (sum < total)
+					sum = C37_238_TIME_INACCURACY_UNKNOWN;
+				org->totalTimeInaccuracy = htonl(sum);
+				return sum;
+			}
+		}
+		p += tlv_size;
+		remaining -= tlv_size;
+	}
+	return 0;
 }
 
 struct port *clock_first_port(struct clock *c)

@@ -176,6 +176,19 @@ void clock_power_profile_set_received_inaccuracy(struct clock *c, UInteger32 val
 UInteger32 clock_power_profile_get_received_inaccuracy(struct clock *c);
 
 /**
+ * Locate the C37.238-2017 organization-extension TLV in an Announce
+ * message being forwarded through a transparent clock and saturating-add
+ * the caller-supplied device contribution to its totalTimeInaccuracy
+ * field. No-op if no such TLV is present, or if the field already holds
+ * the 0xFFFFFFFF "exceeded or unknown" sentinel.
+ * @param m    The Announce message being forwarded.
+ * @param add  Nanoseconds to add (this device's networkTimeInaccuracy).
+ * @return     The post-increment totalTimeInaccuracy, or 0 if no TLV
+ *             was found.
+ */
+UInteger32 clock_power_profile_tc_increment(struct ptp_message *m, UInteger32 add);
+
+/**
  * Obtains a reference to the first port in the clock's list.
  * @param c  The clock instance.
  * @return   A pointer to a port, or NULL if no ports are present.
