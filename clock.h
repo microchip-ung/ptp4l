@@ -152,6 +152,30 @@ UInteger8 clock_priority1(struct clock *c);
 UInteger8 clock_priority2(struct clock *c);
 
 /**
+ * Check whether this clock is currently the grandmaster (own clockIdentity
+ * equals parentDS.grandmasterIdentity).
+ * @param c  The clock instance.
+ * @return   1 if grandmaster, 0 otherwise.
+ */
+int clock_power_profile_is_gm(struct clock *c);
+
+/**
+ * Cache the totalTimeInaccuracy value extracted from an Announce received
+ * from the upstream master. Used as the input to the downstream hop's
+ * saturating-add when re-originating or forwarding.
+ * @param c    The clock instance.
+ * @param val  The received totalTimeInaccuracy.
+ */
+void clock_power_profile_set_received_inaccuracy(struct clock *c, UInteger32 val);
+
+/**
+ * Retrieve the last cached totalTimeInaccuracy from upstream.
+ * @param c  The clock instance.
+ * @return   The cached value (0 if no Announce has been received yet).
+ */
+UInteger32 clock_power_profile_get_received_inaccuracy(struct clock *c);
+
+/**
  * Obtains a reference to the first port in the clock's list.
  * @param c  The clock instance.
  * @return   A pointer to a port, or NULL if no ports are present.

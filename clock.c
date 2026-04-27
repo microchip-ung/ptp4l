@@ -151,6 +151,7 @@ struct clock {
 	int step_window_counter;
 	int step_window;
 	struct time_zone tz[MAX_TIME_ZONES];
+	UInteger32 pwr_received_inaccuracy;
 };
 
 struct clock the_clock;
@@ -1544,6 +1545,24 @@ UInteger8 clock_priority1(struct clock *c)
 UInteger8 clock_priority2(struct clock *c)
 {
 	return c->dds.priority2;
+}
+
+int clock_power_profile_is_gm(struct clock *c)
+{
+	struct ClockIdentity gm = c->dad.pds.grandmasterIdentity;
+	struct ClockIdentity own = c->dds.clockIdentity;
+
+	return !memcmp(&gm, &own, sizeof(gm));
+}
+
+void clock_power_profile_set_received_inaccuracy(struct clock *c, UInteger32 val)
+{
+	c->pwr_received_inaccuracy = val;
+}
+
+UInteger32 clock_power_profile_get_received_inaccuracy(struct clock *c)
+{
+	return c->pwr_received_inaccuracy;
 }
 
 struct port *clock_first_port(struct clock *c)

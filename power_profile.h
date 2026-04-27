@@ -28,4 +28,8 @@ enum power_profile_version {
 	IEEE_C37_238_VERSION_2017,
 };
 
+/* IEEE C37.238-2017 §6.2.1 TLV field values */
+#define C37_238_2017_SUBTYPE			2
+#define C37_238_TIME_INACCURACY_UNKNOWN		0xFFFFFFFFU
+
 #endif
