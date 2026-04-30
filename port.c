@@ -511,10 +511,47 @@ static int ieee_c37_238_append(struct port *p, struct ptp_message *m)
 		memcpy(p17->id, ieeec37_238_id, sizeof(ieeec37_238_id));
 		p17->subtype[2] = 2;
 		p17->grandmasterID = p->pwr.grandmasterID;
-		p17->totalTimeInaccuracy = p->pwr.totalTimeInaccuracy;
+		if (clock_power_profile_is_gm(p->clock)) {
+			p17->totalTimeInaccuracy = p->pwr.grandmasterTimeInaccuracy;
+		} else {
+			UInteger32 rx, sum;
+			rx = clock_power_profile_get_received_inaccuracy(p->clock);
+			sum = rx + p->pwr.networkTimeInaccuracy;
+			if (sum < rx)
+				sum = C37_238_TIME_INACCURACY_UNKNOWN;
+			p17->totalTimeInaccuracy = sum;
+		}
+		p->pwr.totalTimeInaccuracy = p17->totalTimeInaccuracy;
 		break;
 	}
 	return 0;
+}
+
+static void power_profile_extract_inaccuracy(struct port *p,
+					     struct ptp_message *m)
+{
+	struct ieee_c37_238_2017_tlv *pwr;
+	struct organization_tlv *org;
+	struct tlv_extra *extra;
+
+	if (p->pwr.version != IEEE_C37_238_VERSION_2017)
+		return;
+
+	TAILQ_FOREACH(extra, &m->tlv_list, list) {
+		if (extra->tlv->type != TLV_ORGANIZATION_EXTENSION)
+			continue;
+		org = (struct organization_tlv *) extra->tlv;
+		if (memcmp(org->id, ieeec37_238_id, sizeof(ieeec37_238_id)))
+			continue;
+		if (org->subtype[0] || org->subtype[1] ||
+		    org->subtype[2] != C37_238_2017_SUBTYPE)
+			continue;
+		pwr = (struct ieee_c37_238_2017_tlv *) org;
+		clock_power_profile_set_received_inaccuracy(p->clock,
+							    pwr->totalTimeInaccuracy);
+		p->pwr.totalTimeInaccuracy = pwr->totalTimeInaccuracy;
+		return;
+	}
 }
 
 static int net_sync_resp_append(struct port *p, struct ptp_message *m)
@@ -2154,6 +2191,7 @@ static int update_current_master(struct port *p, struct ptp_message *m)
 		tds.flags = m->header.flagField[1];
 		tds.timeSource = m->announce.timeSource;
 		clock_update_time_properties(p->clock, tds);
+		power_profile_extract_inaccuracy(p, m);
 	}
 	if (p->path_trace_enabled) {
 		ptt = (struct path_trace_tlv *) m->announce.suffix;
@@ -4014,6 +4052,50 @@ struct port *port_open(const char *phc_device,
 	}
 	if (p->net_sync_monitor && !p->hybrid_e2e) {
 		pr_warning("%s: net_sync_monitor needs hybrid_e2e", p->log_name);
+	}
+
+	/* IEC/IEEE 61850-9-3 power profile compliance checks */
+	if (!port_is_uds(p) &&
+	    p->pwr.version == IEEE_C37_238_VERSION_2017) {
+		if (p->logAnnounceInterval != 0) {
+			pr_warning("%s: power profile requires logAnnounceInterval 0",
+				   p->log_name);
+		}
+		if (p->logSyncInterval != 0) {
+			pr_warning("%s: power profile requires logSyncInterval 0",
+				   p->log_name);
+		}
+		if (p->logMinPdelayReqInterval != 0) {
+			pr_warning("%s: power profile requires logMinPdelayReqInterval 0",
+				   p->log_name);
+		}
+		if (p->announceReceiptTimeout != 3) {
+			pr_warning("%s: power profile requires announceReceiptTimeout 3",
+				   p->log_name);
+		}
+		if (p->delayMechanism != DM_P2P) {
+			pr_warning("%s: power profile requires P2P delay mechanism",
+				   p->log_name);
+		}
+		if (transport_type(p->trp) != TRANS_IEEE_802_3) {
+			pr_warning("%s: power profile requires L2 transport",
+				   p->log_name);
+		}
+		if (clock_domain_number(p->clock) != 0 &&
+		    clock_domain_number(p->clock) != 93) {
+			pr_warning("%s: power profile requires domainNumber 0 or 93",
+				   p->log_name);
+		}
+		if (clock_slave_only(p->clock)) {
+			if (clock_priority1(p->clock) != 255) {
+				pr_warning("%s: power profile requires priority1 255 for slave-only",
+					   p->log_name);
+			}
+			if (clock_priority2(p->clock) != 255) {
+				pr_warning("%s: power profile requires priority2 255 for slave-only",
+					   p->log_name);
+			}
+		}
 	}
 
 	/* Set fault timeouts to a default value */

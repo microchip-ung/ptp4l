@@ -437,6 +437,15 @@ int tc_forward(struct port *q, struct ptp_message *msg)
 		msg->announce.stepsRemoved = htons(1 + steps_removed);
 	}
 
+	if (q->pwr.version == IEEE_C37_238_VERSION_2017 &&
+	    msg_type(msg) == ANNOUNCE) {
+		UInteger32 new_total;
+		new_total = clock_power_profile_tc_increment(msg,
+							     q->pwr.networkTimeInaccuracy);
+		if (new_total)
+			q->pwr.totalTimeInaccuracy = new_total;
+	}
+
 	for (p = clock_first_port(q->clock); p; p = LIST_NEXT(p, list)) {
 		if (tc_blocked(q, p, msg)) {
 			continue;
