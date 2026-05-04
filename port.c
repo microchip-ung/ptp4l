@@ -3200,10 +3200,100 @@ enum fsm_event port_event(struct port *p, int fd_index)
 	return p->event(p, fd_index);
 }
 
+/* HSR Hybrid Clock helpers (IEC 62439-3 A.3.5).
+ *
+ * bc_event() doubles as the OC/BC state machine for non-HSR ports
+ * and as the local OC/BC half of an HSR Hybrid Clock (TC + OC/BC).
+ * The TC half forwards Announce/Sync/Follow_Up around the ring with
+ * residence-time correction; the helpers below isolate that path so
+ * the non-HSR flow in bc_event stays untouched.
+ */
+
+/* Snapshot the wire-format buffer of a message received on an HSR
+ * port before msg_post_recv() parses it in place. The TC forwarding
+ * helpers (tc_forward, tc_fwd_sync, tc_fwd_folup) walk the message
+ * with ntohs() and friends and need network byte order. msg_duplicate
+ * cannot be used: it would re-run msg_post_recv on a buffer that is
+ * already in host byte order, double-swapping fields and tripping
+ * -EBADMSG. Returns NULL when there is nothing to forward (non-HSR
+ * port or pool exhaustion).
+ */
+static struct ptp_message *bc_red_hsr_snapshot(struct port *p,
+					       struct ptp_message *msg)
+{
+	struct ptp_message *raw;
+
+	if (!red_hsr_port(p))
+		return NULL;
+
+	raw = msg_allocate();
+	if (!raw)
+		return NULL;
+
+	memcpy(raw, msg, sizeof(*raw));
+	raw->refcnt = 1;
+	TAILQ_INIT(&raw->tlv_list);
+	return raw;
+}
+
+/* Defensive HSR self-source filter. The kernel HSR layer drops
+ * frames carrying our own source MAC via hsr_addr_is_self(); if one
+ * still reaches ptp4l, the kernel filter is broken. Warn and signal
+ * that the message must be dropped to avoid spurious state
+ * transitions and forwarding loops. Returns 1 if the message should
+ * be dropped.
+ */
+static int bc_red_hsr_is_self_source(struct port *p,
+				     struct ptp_message *msg)
+{
+	struct ClockIdentity self_cid, src_cid;
+
+	self_cid = clock_identity(p->clock);
+	src_cid = msg->header.sourcePortIdentity.clockIdentity;
+	if (!cid_eq(&self_cid, &src_cid))
+		return 0;
+
+	pr_warning("%s: received own-source %s seq=%u via HSR"
+		   " - kernel self-filter broken?",
+		   p->log_name,
+		   msg_type_string(msg_type(msg)),
+		   ntohs(msg->header.sequenceId));
+	return 1;
+}
+
+/* Forward a received PTP event message around the HSR ring using
+ * the TC path with residence + peer_delay correction (IEC 62439-3
+ * A.3.5). Pdelay messages are link-local per A.3.1 and are not
+ * forwarded. raw must be the network-byte-order snapshot from
+ * bc_red_hsr_snapshot(); a NULL raw means we are not in HSR mode
+ * and the call is a no-op. Returns 0 on success or when not
+ * forwarding, non-zero on forwarding failure.
+ */
+static int bc_red_hsr_forward(struct port *p, struct ptp_message *msg,
+			      struct ptp_message *raw)
+{
+	if (!raw)
+		return 0;
+
+	switch (msg_type(msg)) {
+	case ANNOUNCE:
+	case SIGNALING:
+		return tc_forward(p, raw);
+	case SYNC:
+		return tc_fwd_sync(p, raw);
+	case FOLLOW_UP:
+		return tc_fwd_folup(p, raw);
+	default:
+		/* PDELAY_*: link-local per IEC 62439-3 A.3.1 */
+		return 0;
+	}
+}
+
 static enum fsm_event bc_event(struct port *p, int fd_index)
 {
 	enum fsm_event event = EV_NONE;
 	struct ptp_message *msg;
+	struct ptp_message *raw = NULL;
 	int cnt, fd = p->fda.fd[fd_index], err;
 	struct port *red_master;
 	int orig_syfu_miss;
@@ -3282,6 +3372,14 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 		pr_debug("%s: delay timeout", p->log_name);
 		port_set_delay_tmo(p);
 		delay_req_prune(p);
+		/* HSR Hybrid Clock: the bc_event forward path populates
+		 * p->tc_transmitted with Sync/Follow_Up entries awaiting
+		 * their counterpart for residence-time correlation.
+		 * Age out stale entries when a matching message never
+		 * arrives (e.g. lost Follow_Up).
+		 */
+		if (red_hsr_port(p) || red_hsr_slave_port(p))
+			tc_prune(p);
 		p->service_stats.delay_timeout++;
 		if (port_delay_request(p)) {
 			return EV_FAULT_DETECTED;
@@ -3365,6 +3463,7 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 		msg_put(msg);
 		return EV_FAULT_DETECTED;
 	}
+	raw = bc_red_hsr_snapshot(p, msg);
 	err = msg_post_recv(msg, cnt);
 	if (err) {
 		switch (err) {
@@ -3376,11 +3475,15 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 			break;
 		}
 		msg_put(msg);
+		if (raw)
+			msg_put(raw);
 		return EV_NONE;
 	}
 	port_stats_inc_rx(p, msg);
 	if (port_ignore(p, msg)) {
 		msg_put(msg);
+		if (raw)
+			msg_put(raw);
 		return EV_NONE;
 	}
 	if (msg_sots_missing(msg) &&
@@ -3388,6 +3491,8 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 		pr_err("%s: received %s without timestamp",
 		       p->log_name, msg_type_string(msg_type(msg)));
 		msg_put(msg);
+		if (raw)
+			msg_put(raw);
 		return EV_NONE;
 	}
 	if (msg_sots_valid(msg)) {
@@ -3406,6 +3511,13 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 			 port_name(p),
 			 msg_type_string(msg_type(msg)));
 
+		if (bc_red_hsr_is_self_source(p, msg)) {
+			msg_put(msg);
+			if (raw)
+				msg_put(raw);
+			return EV_NONE;
+		}
+
 		switch (msg_type(msg)) {
 		case ANNOUNCE:
 		case SYNC:
@@ -3421,11 +3533,15 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 				pr_err("Msg %d: no red port found",
 				       msg_type(msg));
 				msg_put(msg);
+				if (raw)
+					msg_put(raw);
 				return EV_NONE;
 			}
 			/* Do not dispatch to FAULTY slave ports. */
 			if (p->state == PS_FAULTY) {
 				msg_put(msg);
+				if (raw)
+					msg_put(raw);
 				return EV_NONE;
 			}
 			/* Save the red slave port so that port_dispatch
@@ -3442,6 +3558,14 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 		default:
 			break;
 		}
+	}
+
+	if (bc_red_hsr_forward(p, msg, raw)) {
+		event = EV_FAULT_DETECTED;
+		msg_put(msg);
+		if (raw)
+			msg_put(raw);
+		return event;
 	}
 
 	switch (msg_type(msg)) {
@@ -3491,6 +3615,8 @@ static enum fsm_event bc_event(struct port *p, int fd_index)
 	}
 
 	msg_put(msg);
+	if (raw)
+		msg_put(raw);
 	return event;
 }
 

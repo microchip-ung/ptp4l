@@ -23,8 +23,43 @@
 #include "tc.h"
 #include "tmv.h"
 #include "missing.h"
+#include "util.h"
 
 static TAILQ_HEAD(tc_pool, tc_txd) tc_pool = TAILQ_HEAD_INITIALIZER(tc_pool);
+
+/* Look up the HSR slave port that corresponds to the *opposite* of the
+ * incoming-leg bit in msg->redinfo.io_port i.e. the directed-tx
+ * target leg that tc_red_fwd will send to.
+ * Returns NULL on non-HSR messages, on HSR messages with a malformed io_port,
+ * or when the io_port has already been mutated to DIRECTED_TX form (call this
+ * BEFORE tc_red_fwd touches the message).
+ */
+static struct port *tc_red_incoming_opposite(struct port *q,
+					     struct ptp_message *msg)
+{
+	struct port *p, *any_slave = NULL;
+	int target_idx;
+
+	if (msg->redinfo.io_port & DIRECTED_TX)
+		return NULL;
+	if (msg->redinfo.io_port & RED_PORT_A)
+		target_idx = 1;
+	else if (msg->redinfo.io_port & RED_PORT_B)
+		target_idx = 0;
+	else
+		return NULL;
+
+	for (p = clock_first_port(q->clock); p; p = LIST_NEXT(p, list)) {
+		if (red_hsr_slave_port(p)) {
+			any_slave = p;
+			break;
+		}
+	}
+	if (!any_slave)
+		return NULL;
+
+	return any_slave->red_master_port->red_slave[target_idx];
+}
 
 static int tc_red_fwd(struct port *p, enum transport_event event,
 		      struct ptp_message *msg)
@@ -37,7 +72,9 @@ static int tc_red_fwd(struct port *p, enum transport_event event,
 	}
 
 	if (red_hsr_slave_port(p)) {
-		/* Determine which leg the frame came in on */
+		/* Determine which leg the frame came in on, and which leg
+		 * to send the directed copy out.
+		 */
 		if (msg->redinfo.io_port & RED_PORT_A) {
 			msg->redinfo.io_port = DIRECTED_TX | RED_PORT_B;
 		} else if (msg->redinfo.io_port & RED_PORT_B) {
@@ -202,11 +239,35 @@ static int tc_current(struct ptp_message *m, struct timespec now)
 static int tc_fwd_event(struct port *q, struct ptp_message *msg)
 {
 	tmv_t egress, ingress = msg->hwts.ts, residence;
+	struct port *target_leg;
 	struct port *p;
 	int cnt, err;
 	double rr;
 
 	clock_gettime(CLOCK_MONOTONIC, &msg->ts.host);
+
+	/* The directed-tx target leg for this msg is the *opposite* of
+	 * the incoming-leg bit in msg->redinfo.io_port. tc_red_fwd
+	 * mutates the io_port (and is called more than once by the
+	 * for-loops below), so resolve and gate on the target here,
+	 * before any mutation. If the target leg is unusable, skip
+	 * the entire forward.
+	 */
+	target_leg = tc_red_incoming_opposite(q, msg);
+	if (target_leg) {
+		enum port_state s = port_state(target_leg);
+
+		if (s == PS_INITIALIZING ||
+		    s == PS_FAULTY ||
+		    s == PS_DISABLED) {
+			pr_debug("tc_fwd_event: skip %s seq %hu, target leg "
+				 "%s state %s",
+				 msg_type_string(msg_type(msg)),
+				 ntohs(msg->header.sequenceId),
+				 target_leg->log_name, ps_str[s]);
+			return 0;
+		}
+	}
 
 	/* First send the event message out. */
 	for (p = clock_first_port(q->clock); p; p = LIST_NEXT(p, list)) {
@@ -519,6 +580,13 @@ int tc_fwd_sync(struct port *q, struct ptp_message *msg)
 		fup->header.sequenceId         = msg->header.sequenceId;
 		fup->header.logMessageInterval = msg->header.logMessageInterval;
 		fup->follow_up.preciseOriginTimestamp = msg->sync.originTimestamp;
+		/* Inherit HSR redundancy metadata (io_port, pathid, etc.)
+		 * from the originating Sync. Without this, tc_red_fwd
+		 * sees io_port=0 on the synthesised Follow_Up and refuses
+		 * to direct it to a ring leg, causing the forwarding to
+		 * fail and the originating port to go FAULTY.
+		 */
+		fup->redinfo                   = msg->redinfo;
 		msg->header.flagField[0]      |= TWO_STEP;
 	}
 	err = tc_fwd_event(q, msg);
