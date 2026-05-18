@@ -4155,6 +4155,11 @@ enum delay_mechanism port_delay_mechanism(struct port *port)
 	return port->delayMechanism;
 }
 
+enum transport_type port_transport_type(struct port *port)
+{
+	return transport_type(port->trp);
+}
+
 int port_state_update(struct port *p, enum fsm_event event, int mdiff)
 {
 	enum port_state next = p->state_machine(p->state, event, mdiff);
