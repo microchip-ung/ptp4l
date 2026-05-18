@@ -235,6 +235,13 @@ enum port_state port_state(struct port *port);
 enum delay_mechanism port_delay_mechanism(struct port *port);
 
 /**
+ * Return port's transport type.
+ * @param port	A port instance.
+ * @return	one of the @ref transport_type values.
+ */
+enum transport_type port_transport_type(struct port *port);
+
+/**
  * Update a port's current state based on a given event.
  * @param p        A pointer previously obtained via port_open().
  * @param event    One of the @a fsm_event codes.

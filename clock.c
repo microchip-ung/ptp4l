@@ -1493,6 +1493,12 @@ struct clock *clock_create(enum clock_type type, struct config *config,
 			       "on port '%s'.", port_log_name(p));
 			return NULL;
 		}
+		if (red_port(p) &&
+		    port_transport_type(p) != TRANS_IEEE_802_3) {
+			pr_err("HSR redundancy requires network_transport L2 "
+			       "on port '%s'.", port_log_name(p));
+			return NULL;
+		}
 		port_redundancy_setup(p);
 	}
 
