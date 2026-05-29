@@ -271,6 +271,7 @@ struct config_item config_tab[] = {
 	GLOB_ITEM_INT("gmCapable", 1, 0, 1),
 	GLOB_ITEM_ENU("hwts_filter", HWTS_FILTER_NORMAL, hwts_filter_enu),
 	PORT_ITEM_INT("hw_tc_fwd", 0, 0, 1),
+	PORT_ITEM_STR("hw_tc_delay_file", ""),
 	PORT_ITEM_INT("hybrid_e2e", 0, 0, 1),
 	PORT_ITEM_INT("ignore_source_id", 0, 0, 1),
 	PORT_ITEM_INT("ignore_transport_specific", 0, 0, 1),
