@@ -2025,6 +2025,7 @@ int port_initialize(struct port *p)
 	p->initialLogAnnounceInterval = config_get_int(cfg, p->name, "logAnnounceInterval");
 	p->logAnnounceInterval     = p->initialLogAnnounceInterval;
 	p->hw_tc_fwd               = config_get_int(cfg, p->name, "hw_tc_fwd");
+	p->hw_tc_delay_file        = config_get_string(cfg, p->name, "hw_tc_delay_file");
 	p->inhibit_announce        = config_get_int(cfg, p->name, "inhibit_announce");
 	p->ignore_source_id        = config_get_int(cfg, p->name, "ignore_source_id");
 	p->announceReceiptTimeout  = config_get_int(cfg, p->name, "announceReceiptTimeout");
@@ -2594,6 +2595,44 @@ out:
 	return err;
 }
 
+/* Push the latest peerMeanPathDelay to a per-port file. The driver
+ * exposes one file per relevant chip port (e.g.
+ * /sys/kernel/debug/lan9645x_sw/ptp/lan0/ptp_pdelay_q16) and decodes
+ * the value to program the per-port residence-correction register so
+ * the hardware can add the upstream link delay to cF on every
+ * forwarded Sync.
+ *
+ * The value written is the raw peerMeanPathDelay in 2^-16 ns units
+ * (IEEE 1588 TimeInterval). Format: "<delay_q16>\n".
+ *
+ * This is independent of hw_tc_fwd: a free-running TC without HSR
+ * also benefits, and the chip may want the delay even when ptp4l
+ * keeps doing the software forward.
+ */
+static void port_hw_tc_write_delay(struct port *p)
+{
+	int64_t delay_q16;
+	char buf[32];
+	FILE *f;
+
+	if (!p->hw_tc_delay_file || !p->hw_tc_delay_file[0])
+		return;
+
+	delay_q16 = p->peerMeanPathDelay;
+
+	f = fopen(p->hw_tc_delay_file, "w");
+	if (!f) {
+		pr_err("hw_tc: cannot open %s: %m", p->hw_tc_delay_file);
+		return;
+	}
+	snprintf(buf, sizeof(buf), "%lld\n", (long long)delay_q16);
+	fputs(buf, f);
+	fclose(f);
+
+	pr_debug("hw_tc: port %s peerMeanPathDelay %lld (2^-16 ns) -> %s",
+		 p->log_name, (long long)delay_q16, p->hw_tc_delay_file);
+}
+
 static void port_peer_delay(struct port *p)
 {
 	tmv_t c1, c2, t1, t2, t3, t3c, t4;
@@ -2662,6 +2701,7 @@ calc:
 		return;
 
 	p->peerMeanPathDelay = tmv_to_TimeInterval(p->peer_delay);
+	port_hw_tc_write_delay(p);
 
 	if (p->state == PS_UNCALIBRATED || p->state == PS_SLAVE) {
 		clock_peer_delay(p->clock, p->peer_delay, t1, t2,
@@ -2747,6 +2787,7 @@ calc:
 		return;
 
 	p->peerMeanPathDelay = tmv_to_TimeInterval(p->peer_delay);
+	port_hw_tc_write_delay(p);
 
 	if (p->state == PS_UNCALIBRATED || p->state == PS_SLAVE) {
 		clock_peer_delay(p->clock, p->peer_delay, t1, t2,
