@@ -450,6 +450,20 @@ enum fsm_event relay_event(struct port *p, int fd_index)
 		return EV_NONE;
 	}
 
+	/*
+	 * Event messages must carry an ingress timestamp to compute the
+	 * residence time. Some switches (e.g. the 88E6341 in register-based
+	 * arrival-timestamp mode) occasionally fail to deliver one under load;
+	 * drop the message rather than relay a bogus correctionField, and
+	 * rate-limit the warning so it does not flood the log.
+	 */
+	if (msg_sots_missing(msg)) {
+		pl_warning(60, "port %hu: received %s without timestamp",
+			   portnum(p), msg_type_string(msg_type(msg)));
+		msg_put(msg);
+		return EV_NONE;
+	}
+
 	dup = msg_duplicate(msg, cnt);
 	if (!dup) {
 		msg_put(msg);
