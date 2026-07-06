@@ -2710,6 +2710,8 @@ calc:
 
 	msg_put(p->peer_delay_req);
 	p->peer_delay_req = NULL;
+
+	port_capable(p);
 }
 
 static struct hw_timestamp *
@@ -2796,6 +2798,8 @@ calc:
 
 	msg_put(p->peer_delay_req);
 	p->peer_delay_req = NULL;
+
+	port_capable(p);
 }
 
 int process_pdelay_resp(struct port *p, struct ptp_message *m)
