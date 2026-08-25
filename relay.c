@@ -444,6 +444,21 @@ enum fsm_event relay_event(struct port *p, int fd_index)
 	if (msg_sots_valid(msg)) {
 		ts_add(&msg->hwts.ts, -p->rx_timestamp_offset);
 	}
+	/*
+	 * The UDS port carries locally-originated management traffic
+	 * (e.g. from pmc), which is flagged unicast and must be handled
+	 * by the clock rather than relayed.
+	 */
+	if (!portnum(p)) {
+		if (msg_post_recv(msg, cnt)) {
+			pr_err("port %hu: bad message", portnum(p));
+		} else if (msg_type(msg) == MANAGEMENT &&
+			   clock_manage(p->clock, p, msg)) {
+			event = EV_STATE_DECISION_EVENT;
+		}
+		msg_put(msg);
+		return event;
+	}
 	if (msg_unicast(msg)) {
 		pl_warning(600, "cannot switch unicast messages!");
 		msg_put(msg);
